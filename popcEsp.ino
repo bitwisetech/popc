@@ -1,4 +1,5 @@
 /// popcEsp popc port to esp with MQTT, tickScheduler, is MQTT client popc
+//  Mr10 Remove 500mS delay in cbckDisc(),  const char strings for topics
 //  Mr01 Combine User serial command input with subs callback for user commands  
 //  Fe22 Add section descriptions, re-order     
 //  Fe20 redo callback to 500mS, 1sec, 2sec, 5sec and tune pidc
