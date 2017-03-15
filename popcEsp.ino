@@ -1,4 +1,9 @@
 /// popcEsp popc port to esp with MQTT, tickScheduler, is MQTT client popc
+//  Mr15
+//  Mr15 cleanup loop timing, elapMSec was too big imm after init()
+//  Mr14 fix dsbld pwmdInit(), timing by millis() not micros()
+//  Mr12 publish P, I, D, E, terms, subscribe Beta, Gamma 
+//  Mr11 Do 1, 2, 5 sec tick callbacks only 
 //  Mr10 Remove 500mS delay in cbckDisc(),  const char strings for topics
 //  Mr01 Combine User serial command input with subs callback for user commands  
 //  Fe22 Add section descriptions, re-order     
@@ -15,7 +20,7 @@
 //  pidc  PID controller for PWM powered temperature control; a delta-time incremental PID 
 //  popc  Publish, Subscribe, Callback, Scheduler functions for MQTT /Ticker Scheduler
 //  pwmd  8-bit PWM control via hardware pwm pins 
-//  rctl  Run time control; selects auto/manual temp setpt, pwm width, real/fake temp sensor
+//  prof  Profile control; selects auto/manual temp setpt, manual pwm width, real/fake temp sensor
 //  tcpl  MAX31855 SPI thermocouple temperature sensor or virtual temp readings for debug
 //  user  receive user's commands via serial port ( and MQTT ?? ) for setpoint, ramp, profile modes 
 //    
@@ -51,7 +56,7 @@ __asm volatile ("nop");
 #if IN_ESP
 #include <Adafruit_ESP8266.h>
 // Beg paste from pubsShed 
-// popcShed ingo MQTT withtick, scheduler 
+// popcShed ingo MQTT with tick, scheduler 
 // 
 #include <WiFiClient.h>
 #include <ESP8266WiFiAP.h>
@@ -94,7 +99,7 @@ char *dbugLine = " <==>                                                         
 char scalCent = 'C';
 char scalFahr = 'F';
 
-String userLin0("exactly thirty one chars length");  // Crashable ! 
+String userCmdl("exactly thirty one chars length");  // Crashable ! 
 
 // FRNT
 union {                // This Data structure lets
@@ -122,18 +127,24 @@ LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  // Set the LCD I
 // i-n-g-o MQTT 
 #include <MQTT.h>
 #define MQCL_ID "popc"
-#define TOPS_BASE "/popc"
 char mqttVals[] =  "                ";                     // mqtt value string 15 char max
-const char KpTops[]   = "/popc/pidc/Kp";
-const char TdTops[]   = "/popc/pidc/Td";
-const char TiTops[]   = "/popc/pidc/Ti";
-const char RnTops[]   = "/popc/pidc/Rn";
-const char YnTops[]   = "/popc/pidc/Yn";
-const char UnTops[]   = "/popc/pidc/Un";
-const char psecTops[] = "/popc/profSecs";
-const char pcntTops[] = "/popc/pwmd/perCent";
-const char ptmpTops[] = "/popc/profTmpC";
-const char c500Tops[] = "/popc/cbck5000";
+const char RnTops[]    = "/popc/pidc/Rn";
+const char YnTops[]    = "/popc/pidc/Yn";
+const char EnTops[]    = "/popc/pidc/En";
+const char UnTops[]    = "/popc/pidc/Un";
+const char PnTops[]    = "/popc/pidc/Pn";
+const char InTops[]    = "/popc/pidc/In";
+const char DnTops[]    = "/popc/pidc/Dn";
+const char KpTops[]    = "/popc/pidc/Kp";
+const char TdTops[]    = "/popc/pidc/Td";
+const char TiTops[]    = "/popc/pidc/Ti";
+const char BetaTops[]  = "/popc/pidc/Beta";
+const char GammaTops[] = "/popc/pidc/Gamma";
+const char userTops[]  = "/popc/userCmdl";
+const char psecTops[]  = "/popc/profSecs";
+const char pcntTops[]  = "/popc/pwmd/perCent";
+const char ptmpTops[]  = "/popc/profTmpC";
+const char c500Tops[]  = "/popc/cbck5000";
 
 // create MQTT object with IP address, port of MQTT broker e.g.mosquitto application
 //ab  MQTT myMqtt(MQCL_ID, "192.168.0.1", 1883);
@@ -142,37 +153,36 @@ const char c500Tops[] = "/popc/cbck5000";
 MQTT popcMqtt(MQCL_ID, "172.20.224.111", 5983);
 
 //pidc
-int   pidcVbse    = 0;                    // 1: bbrd 2: DbugLine + Publ 
 float pidcRn      =  20.000;              // Refr setpoint
 float pidcYn      =  20.000;              // YInp input
-float pidcKp      =   2.000;              // P-Term gain
+float pidcEn      =   0.000;              // YInp input
+float pidcKp      =   4.000;              // P-Term gain
 float pidcTd      =   0.010;              // D-Term Gain sec ( Td++ = Gain++)
 float pidcTi      =   2.000;              // I-Term Gain sec ( Ti++ = Gain--)
 float pidcBeta    =   1.000;              // P-term Refr vs YInp
-float pidcGamm    =   0.100;              // D-term Refr vs YInp
-float alpha       =   0.100;              // D-term Filter time
-float uMax        = 250.000;              // Outp Max
-float uMin        =   0.000;              // Outp Min
-float dUn, Edn, Epn, Epn1            = 0; // Calc error values
-float Edfn2, Edfn1, Edfn             = 0; // Calc error values
-float Tf, Ts, TsDivTf                = 0; // Filter, Actual sample period, stash
-float pidcPc, pidcIc, pidcDc, pidcEn = 0; // Calc delta OP, P-I-D Terms
-float Un  = 0;                            // OP for current sample
-float Un1 = 0;                            // Save OP from prev sample
-float pidcUn = 0;                         // PID controller Output
+float pidcGamma   =   1.000;              // D-term Refr vs YInp
+float pidcAlpha   =   0.100;              // D-term Filter time
+float pidcUMax    = 250.000;              // Outp Max
+float pidcUMin    =   0.000;              // Outp Min
+float dUn, Edn, Epn, Epn1          = 0.0; // Calc error values
+float Edfn2, Edfn1, Edfn, Un, Un1  = 0.0; // Calc error, output, prev output values
+float Tf, Ts, TsDivTf              = 0.0; // Filter, Actual sample period, stash
+float pidcPn, pidcIn, pidcDn       = 0.0; // per sample P-I-D-Err Terms
+float pidcPc, pidcIc, pidcDc       = 0.0; // cumulative P-I-D components 
+float pidcUn = 0.0;                       // PID controller Output
 
 // pwmd vbls
 int  pwmdFreq, pwmdDuty, pwmdTarg, pwmdOutp;
 int  pwmdHist[] = { 0, 0, 0, 0};
 byte pwmdPcnt;
 
-// 
-#define TCPL_POLL_USEC  250000L            // 250mS termocouple poll
-#define PWMD_POLL_USEC  250000L            // 250mS termocouple poll
-#define PIDC_POLL_USEC  250000L            // 250mS pid control poll
-#define LCDS_POLL_USEC 2000000L            // 2Sec  lcd display poll
-#define RCTL_POLL_USEC 1000000L            // 1Sec  run control poll
-#define OPEN_POLL_USEC    1000L            // Open window for jitter
+// millisecond poll values
+#define TCPL_POLL_MSEC  100UL            // 250mS termocouple poll
+#define PWMD_POLL_MSEC  100UL            // 250mS pwm driver  poll
+#define PIDC_POLL_MSEC  100UL            // 250mS pid control poll
+#define LCDS_POLL_MSEC 5000UL            // 2Sec  lcd display poll
+#define PROF_POLL_MSEC 1000UL            // 1Sec  run control poll
+#define POLL_SLOP_MSEC    5UL            // Avge loop time is 10mSec 
 
 // Run Cntl vbls  Bit 0:Run 1:Ctrl 2:Auto 3:Info  Info: 4: 5:Virt 6:Dbug 7:bbrd 
 #define RCTL_RUNS 0x80
@@ -189,17 +199,14 @@ byte  frntRctl  = 0x00;
 byte  lcdstRctl  = 0x00;
 byte  pidcRctl  = (RCTL_RUNS | RCTL_AUTO );
 byte  pwmdRctl  = (RCTL_RUNS | RCTL_AUTO);
-byte  rctlRctl  = RCTL_RUNS;
+byte  profRctl  = RCTL_RUNS;
 byte  tcplRctl  = (RCTL_RUNS | RCTL_VIRT);
 byte  userRctl  = RCTL_RUNS;
 byte  wifiRctl  = RCTL_RUNS;
 // scheduler tick callback attn flags 
-byte  cb05Rctl  = RCTL_RUNS;
 byte  cb10Rctl  = RCTL_RUNS;
 byte  cb20Rctl  = RCTL_RUNS;
-byte  cb30Rctl  = RCTL_RUNS;
 byte  cb50Rctl  = RCTL_RUNS;
-
 
 #if IN_ESP
 //pubsub
@@ -209,13 +216,13 @@ void discCbck();
 void connCbck();
 
 #include "TickerScheduler.h"
-TickerScheduler popcShed(6);
+TickerScheduler popcShed(3);
 
 //  time
-unsigned long uSecCurr;
-unsigned int  uSecOflo;
-unsigned long lcdsPrev, pidcPrev, rctlPrev, pwmdPrev, tcplPrev;
-         long lcdsTogo, pidcTogo, rctlTogo, pwmdTogo, tcplTogo, tempLong;
+unsigned int  mSecOflo;
+unsigned long currMSec, elapMSec = 0UL;
+unsigned long lcdsPrev, pidcPrev, profPrev, pwmdPrev, tcplPrev = 0UL;
+unsigned long lcdsTogo, pidcTogo, profTogo, pwmdTogo, tcplTogo = 0UL;
 //
 // wifi
 //abconst char* ssid     = "ssid";
@@ -254,7 +261,7 @@ MAX31855 tcpl(TCPL_CL, TCPL_CS, TCPL_DO);
 double tcplTmpC;
 
 //
-float         userInpu, targTmpC, sensTmpC;
+float         targTmpC, sensTmpC;
 int           profSele, profTmpC, profCdpm, profTbeg, profSecs;
 int           userCdpm, msetPwmd, userTmpC, tempIndx; 
 
@@ -268,36 +275,15 @@ float floatFtoC( float fahrInp) {
   return (float( ((fahrInp + 40) * 5L / 9L )  -40 ));
 }  
   
-///   Timing 
-unsigned long uSecElap( unsigned long *callPrev, unsigned long *callElap) {
-  unsigned long uSecCurr = micros();
-  unsigned long uSecPrev = *callPrev;
-  unsigned long uSecElap;
-  unsigned int  uSecOflo;
-  if ( uSecCurr > uSecPrev) {
-    uSecElap = ( uSecCurr - uSecPrev);
-    uSecOflo = 0;
-  } else {
-    uSecElap = (( 0xFFFFFFFF - uSecPrev) + uSecCurr  + 1);
-    uSecOflo = 1;
-  }
-  *callPrev = uSecCurr;
-  *callElap = uSecElap;
-  return ( uSecOflo);
+//  Timing 
+unsigned long mSecPast( unsigned long mSecLast) {
+  // last millis() remains in global currMSec
+  currMSec =  millis();
+  // correct result with uns long even after oflo
+  return (currMSec - mSecLast);
 }
 
-long uSecPast( unsigned long uSecLast) {
-  uSecCurr = micros();
-  if ( uSecCurr >= uSecLast) {
-    uSecOflo = 0;
-    return (uSecCurr - uSecLast);
-  } else {
-    uSecOflo = 1;
-    return ( 0xFFFFFFFF - uSecLast) + uSecCurr  + 1;
-  }
-}
-
-// billboard
+//  billboard
 void bbrdFill() {
   // strf ops append null chars, fill single chars later 
   dtostrf( sensTmpC, 3, 0, &bbrdLin0[0] );
@@ -347,40 +333,6 @@ void bbrdPubl( byte tTyp) {
     Serial.print("bbrdPubl tTyp: ");
     Serial.println(tTyp);
   }
-  // maybe do not re-publish here 
-  cbck0500();  
-  cbck3000();  
-  //
-}  
-
-void bbrdSubs( byte tTyp) {
-  Serial.print("bbrdSubs tTyp: ");
-  Serial.println(tTyp);
-  boolean rCode = 0;
-  rCode += popcMqtt.subscribe( KpTops );
-  //if ( rCode) {
-    //Serial.print("bbrdSubs Kp bad cuml RC: ");
-    //Serial.println(rCode);
-    //Serial.println(KpTops);
-  //}
-  //
-  rCode = 0;
-  rCode += popcMqtt.subscribe( TdTops );
-  //if ( rCode) {
-    //Serial.print("bbrdSubs Td bad cuml RC: ");
-    //Serial.println(rCode);
-    //Serial.println(TdTops);
-  //}
-  //
-  rCode = 0;
-  rCode += popcMqtt.subscribe( TiTops );
-  //
-  //if ( rCode) {
-    //Serial.print("bbrdSubs Ti bad cuml RC: ");
-    //Serial.println(rCode);
-    //Serial.println(TiTops);
-  //}
-  //
 }  
 
 // 'Front' something ( Processing ?), serial ifac to PC graphing app c
@@ -475,18 +427,18 @@ void lcdsInit() {
   lcd.print(F("@bitwisetech.com"));
   delay ( 2000 );                //  1000mS startup delay
   lcd.clear();
-  lcdsTogo  = LCDS_POLL_USEC;     // lcd display    poll period uSec
-  lcdsPrev  = micros();
+  lcdsTogo  = LCDS_POLL_MSEC;     // lcd display    poll period mSec
+  lcdsPrev  =  millis();
 }
 
 void lcdsLoop() {
-  tempLong = uSecPast( lcdsPrev);
-  if (( lcdsTogo - OPEN_POLL_USEC ) > tempLong ) {
+  currMSec = millis();
+  elapMSec = currMSec - pidcPrev;
+  if (( lcdsTogo - POLL_SLOP_MSEC ) > elapMSec ) {
     return;
   } else {
-    lcdsPrev = uSecCurr;
-    // in templong: uSec since last service
-    lcdsTogo = 2 * LCDS_POLL_USEC - tempLong;
+    lcdsPrev = millis();
+    lcdsTogo = LCDS_POLL_MSEC;
     //
     if (lcdstRctl== 0) {
       // Rctl == 0 Shutdown
@@ -508,9 +460,9 @@ void lcdsLoop() {
 
 ///  PID Controller
 ///  pidc - implementation of PID controller
-//   dUn =  Kp * (ep_n - ep_n-1)
-//            + ((Ts/Ti) *  e_n)
-//            + ((Td/Ts) * (edf_n - 2*edf_n-1 + edf_n-2) )
+//   dUn =  Kp * [ (ep_n - ep_n-1)
+//               + ((Ts/Ti) *  e_n)
+//               + ((Td/Ts) * (edf_n - 2*edf_n-1 + edf_n-2) ) ]
 //
 //    Un = Un1 + dUn  Output = prev output + delta output
 //
@@ -526,7 +478,7 @@ void lcdsLoop() {
 //        Ep = pidcBeta * Rn - Yn
 //         E: Error = Rn - Yn
 //        Ed: Unfiltered Derivative Error
-//        Ed = pidcGamm * Rn -Yn
+//        Ed = pidcGamma * Rn -Yn
 //       Edf: Deriv error with reference weighing and filtering
 //       Edfn = Efn1 / ((Ts/Tf) + 1) + Edn * (Ts/Tf) / ((Ts/Tf) + 1)
 //         where:
@@ -536,35 +488,43 @@ void lcdsLoop() {
 
 //
 void pidcInit() {
-  Tf = alpha * pidcTd;
+  Tf = pidcAlpha * pidcTd;
   Epn1 = 0.0;
   Edfn2 = Edfn1 = Edfn = 0;
   // first time being enabled, seed with current property tree value
   Un1 = Un = 0;
-  pidcTogo = PIDC_POLL_USEC;      // PID control poll period uSec
-  pidcPrev = micros();
+  pidcTogo = PIDC_POLL_MSEC;      // PID control poll period mSec
+  pidcPrev =  millis();
   targTmpC = 20;
 }
 
 //
 void pidcLoop() {
-  tempLong = uSecPast( pidcPrev);
-  if (( pidcTogo - OPEN_POLL_USEC ) > tempLong ) {
+  currMSec = millis();
+  elapMSec = currMSec - pidcPrev;
+  if (( pidcTogo - POLL_SLOP_MSEC ) > elapMSec ) {
     return;
   } else {
-    pidcPrev = uSecCurr;
-    // in templong: uSec since last service
-    pidcTogo = 2 * PIDC_POLL_USEC - tempLong;
+    // save this currMSec as time of service
+    //pidcPrev = currMSec;
+    // Adjusting with elapMSec errors after init when 8secs elapse  time togo  
+    //pidcTogo = 2 * PIDC_POLL_MSEC - elapMSec;
+    pidcPrev = millis();
+    pidcTogo = PIDC_POLL_MSEC;
+    //Serial.print("pidc ");
+    //Serial.println( elapMSec);
     //
     if ( pidcRctl & RCTL_RUNS  == 0 ) {
       // Poll/Thermocouple == 0 Shutdown
+      Serial.println('pidc stop');
       Un = 0;
     } else {
-      Ts = (PIDC_POLL_USEC - (float)pidcTogo) / 1000000.0; // sample interval (Sec)
-      pidcTogo += PIDC_POLL_USEC;
       // 
-      pidcRn = targTmpC;
-      pidcYn = sensTmpC;
+      //Ts = (PIDC_POLL_MSEC - (float)pidcTogo) / 1000000.0; // sample interval (Sec)
+      Ts = (float)elapMSec / 1000.0;
+      // 
+      pidcRn = (float)targTmpC;
+      pidcYn = (float)sensTmpC;
       // P term 
       pidcEn  = pidcRn - pidcYn;
       Epn = pidcBeta * pidcRn - pidcYn;
@@ -572,35 +532,40 @@ void pidcLoop() {
       if ( pidcTd <= 0 ) {
         Edfn2 = Edfn1 = Edfn = 0;
       } else {
-        Edn = pidcGamm * pidcRn - pidcYn;
+        Edn = pidcGamma * pidcRn - pidcYn;
         // Filter the derivate error:
-        Tf = alpha * pidcTd;
+        Tf = pidcAlpha * pidcTd;
         TsDivTf = Ts / Tf;
-        Edfn = Edfn1 / (TsDivTf + 1)
-               + Edn * (TsDivTf) / (TsDivTf + 1);
+        Edfn = (Edfn1 / (TsDivTf + 1.0)) +  (Edn * ((TsDivTf) / (TsDivTf + 1.0)));
       }
       // Accum Combine P, I, D terms 
       dUn = 0;
-      pidcPc = pidcKp *  (Epn - Epn1);
+      // P term 
+      pidcPn = pidcKp *  (Epn - Epn1);
+      pidcPc += pidcPn;
+      // I term 
       if ( pidcTi > 0.0 ) {
-        pidcIc = pidcKp * ((Ts / pidcTi) * pidcEn);
+        pidcIn = pidcKp * ((Ts / pidcTi) * pidcEn);
       } else {
-        pidcIc = 0;
+        pidcIn = 0;
       }    
+      pidcIc += pidcIn;
+      // D term
       if ( pidcTd > 0.0 ) {
-        pidcDc = pidcKp * ((pidcTd / Ts) * (Edfn - (2 * Edfn1) + Edfn2));
+        pidcDn = pidcKp * ((pidcTd / Ts) * (Edfn - (2 * Edfn1) + Edfn2));
       } else {
-        pidcDc = 0;
-      }  
-      dUn    = pidcPc + pidcIc + pidcDc;
+        pidcDn = 0;
+      } 
+      pidcDc += pidcDn; 
+      dUn    = pidcPn + pidcIn + pidcDn;
       // Integrator anti-windup logic:
-      if ( dUn > (uMax - Un1) ) {
-        dUn = uMax - Un1;
+      if ( dUn > (pidcUMax - Un1) ) {
+        dUn = pidcUMax - Un1;
         if (pidcRctl & (RCTL_INFO | RCTL_BBRD) ) {
           Serial.println(F("maxSatn"));
         }  
-      } else if ( dUn < (uMin - Un1) ) {
-        dUn = uMin - Un1;
+      } else if ( dUn < (pidcUMin - Un1) ) {
+        dUn = pidcUMin - Un1;
         if (pidcRctl & (RCTL_INFO | RCTL_BBRD) ) {
           Serial.println(F("minSatn"));
         }  
@@ -674,20 +639,12 @@ void publCbck() {
 void dataCbck(String& topic, String& data) {
   int   topiIndx;
   float topiValu;
-  //Serial.print("dataCbck topic:data  ");
-  //Serial.print(topic);
-  //Serial.print(":");
-  //Serial.println(data);
-  topiIndx = topic.indexOf("pidc/Rn");
-  if (topiIndx >= 0){
-    topiValu = data.toFloat();
-    if ( topiValu != pidcRn) {
-      Serial.print("new Rn: ");
-      Serial.println(topiValu);
-      pidcRn = topiValu;
-    }  
-  }
+  Serial.print("dataCbck topic:");
+  Serial.print(topic);
+  Serial.print("   data:");
+  Serial.println(data);
   topiIndx = topic.indexOf("pidc/Kp");
+  Serial.println("cbck Kp");
   if (topiIndx >= 0){
     topiValu = data.toFloat();
     if ( topiValu != pidcKp) {
@@ -714,30 +671,32 @@ void dataCbck(String& topic, String& data) {
       pidcTi = topiValu;
     }  
   }  
-}
-
-void cbck0500() {
-  cb05Rctl |= RCTL_ATTN;
-}
-
-void cb05Svce() {
-  boolean rCode = 0;
-  // publish write parms
-  dtostrf( pidcRn, 8, 3, mqttVals);
-  rCode += popcMqtt.publish( (const char * )RnTops , (const char * )mqttVals, 15 ); 
-  //
-  dtostrf( pidcYn, 8, 3, mqttVals);
-  rCode += popcMqtt.publish( (const char * )YnTops, (const char * )(mqttVals), 15 ); 
-  //
-  dtostrf( pidcUn, 8, 3, mqttVals);
-  rCode += popcMqtt.publish( (const char * )UnTops, (const char * )(mqttVals), 15 ); 
-  //
-  //if ( rCode) {
-    //Serial.print("cbck0500 bad cuml RC: ");
-    //Serial.println(rCode);
-  //}
-  //
-  cb05Rctl &= ~RCTL_ATTN;
+  topiIndx = topic.indexOf("pidc/Beta");
+  if (topiIndx >= 0){
+    topiValu = data.toFloat();
+    if ( topiValu != pidcBeta) {
+      Serial.print("new Beta: ");
+      Serial.println(topiValu);
+      pidcBeta = topiValu;
+    }  
+  }
+  topiIndx = topic.indexOf("pidc/Gamma");
+  if (topiIndx >= 0){
+    topiValu = data.toFloat();
+    if ( topiValu != pidcGamma) {
+      Serial.print("new Gamma: ");
+      Serial.println(topiValu);
+      pidcGamma = topiValu;
+    }  
+  }
+  topiIndx = topic.indexOf("userCmdl");
+  if (topiIndx >= 0){
+    // copy data into user command line
+    userCmdl = data;
+    Serial.print("User Command: ");
+    Serial.println(userCmdl);
+    userRctl |= RCTL_ATTN; 
+  }  
 }
 
 void cbck1000() {
@@ -745,7 +704,29 @@ void cbck1000() {
 }
 
 void cb10Svce() {
-  boolean rCode = 0;
+  int rCode = 0;
+  //
+  dtostrf( pidcRn, 8, 3, mqttVals);
+  rCode += popcMqtt.publish( (const char * )RnTops , (const char * )mqttVals, 15 ); 
+  //
+  dtostrf( pidcYn, 8, 3, mqttVals);
+  rCode += popcMqtt.publish( (const char * )YnTops, (const char * )(mqttVals), 15 ); 
+  //
+  dtostrf( pidcEn, 8, 3, mqttVals);
+  rCode += popcMqtt.publish( (const char * )EnTops, (const char * )(mqttVals), 15 ); 
+  //
+  dtostrf( pidcUn, 8, 3, mqttVals);
+  rCode += popcMqtt.publish( (const char * )UnTops, (const char * )(mqttVals), 15 ); 
+  //
+  dtostrf( pidcPn, 8, 3, mqttVals);
+  rCode += popcMqtt.publish( (const char * )PnTops, (const char * )(mqttVals), 15 ); 
+  //
+  dtostrf( pidcDn, 8, 3, mqttVals);
+  rCode += popcMqtt.publish( (const char * )DnTops, (const char * )(mqttVals), 15 ); 
+  //
+  dtostrf( pidcIn, 8, 3, mqttVals);
+  rCode += popcMqtt.publish( (const char * )InTops, (const char * )(mqttVals), 15 ); 
+  //
   dtostrf( profSecs, 8, 3, mqttVals);
   rCode += popcMqtt.publish( psecTops, (const char * )(mqttVals), 15 );
   //
@@ -762,7 +743,34 @@ void cbck2000() {
 }
 
 void cb20Svce() {
-  boolean rCode = 0;
+  int rCode = 0;
+  //
+  //
+  bbrdPubl(1);
+  cb20Rctl &= !RCTL_ATTN;
+}
+
+void cbck5000() {
+  cb50Rctl |= RCTL_ATTN;
+}
+
+void cb50Svce() {
+  int rCode = 0;
+  dtostrf( millis(), 8, 3, mqttVals);
+  rCode += popcMqtt.publish( (const char * )c500Tops, (const char *)(mqttVals), 15 ); 
+  //
+  dtostrf( pidcKp, 8, 3, mqttVals);
+  rCode += popcMqtt.publish( (const char * )KpTops,   (const char *)(mqttVals), 15 ); 
+  //
+  dtostrf( pidcTi, 8, 3, mqttVals);
+  rCode += popcMqtt.publish( (const char * )TiTops,   (const char *)(mqttVals), 15 ); 
+  //
+  dtostrf( pidcTd, 8, 3, mqttVals);
+  rCode += popcMqtt.publish( (const char * )TdTops,   (const char *)(mqttVals), 15 ); 
+  //
+  dtostrf( profTmpC, 8, 3, mqttVals);
+  rCode += popcMqtt.publish( (const char * )ptmpTops, (const char *)(mqttVals), 15 ); 
+  //
   dtostrf( pwmdPcnt, 8, 3, mqttVals);
   rCode += popcMqtt.publish( (const char * )pcntTops, (const char *)(mqttVals), 15 ); 
   //
@@ -770,44 +778,6 @@ void cb20Svce() {
     //Serial.print("cbck2000 bad cuml RC: ");
     //Serial.println(rCode);
   //}
-  //
-  bbrdPubl(1);
-  cb20Rctl &= !RCTL_ATTN;
-}
-
-void cbck3000() {
-  cb30Rctl |= RCTL_ATTN;
-}
-
-void cb30Svce() {
-  boolean rCode = 0;
-  dtostrf( pidcKp, 8, 3, mqttVals);
-  rCode += popcMqtt.publish( (const char * )KpTops, (const char * )(mqttVals), 15 ); 
-  //
-  dtostrf( pidcTi, 8, 3, mqttVals);
-  rCode += popcMqtt.publish( (const char * )TiTops, (const char * )(mqttVals), 15 ); 
-  //
-  dtostrf( pidcTd, 8, 3, mqttVals);
-  rCode += popcMqtt.publish( (const char * )TdTops, (const char * )(mqttVals), 15 ); 
-  //
-  dtostrf( profTmpC, 8, 3, mqttVals);
-  rCode += popcMqtt.publish( (const char * )ptmpTops, (const char * )(mqttVals), 15 ); 
-  //
-  //if ( rCode) {
-    //Serial.print("cbck3000 bad cuml RC: ");
-    //Serial.println(rCode);
-  //}
-  cb30Rctl &= ~RCTL_ATTN;
-}
-
-void cbck5000() {
-  cb30Rctl |= RCTL_ATTN;
-}
-
-void cb50Svce() {
-  String valueStr("alive");
-  boolean rCode = popcMqtt.publish( c500Tops, valueStr);
-  //
   //if ( rCode) {
     //Serial.print("cbck5000 bad cuml RC: ");
     //Serial.println(rCode);
@@ -815,6 +785,59 @@ void cb50Svce() {
   cb50Rctl &= ~RCTL_ATTN;
 }  
   
+void popcSubs() {
+  int rCode = 0;
+  rCode += popcMqtt.subscribe( KpTops );
+  //if ( rCode) {
+    //Serial.print("bbrdSubs Kp bad cuml RC: ");
+    //Serial.println(rCode);
+    //Serial.println(KpTops);
+  //}
+  //
+  rCode = 0;
+  rCode += popcMqtt.subscribe( BetaTops );
+  //if ( rCode) {
+    //Serial.print("bbrdSubs Beta bad cuml RC: ");
+    //Serial.println(rCode);
+    //Serial.println(KpTops);
+  //}
+  //
+  rCode = 0;
+  rCode += popcMqtt.subscribe( GammaTops );
+  //if ( rCode) {
+    //Serial.print("bbrdSubs Gamma bad cuml RC: ");
+    //Serial.println(rCode);
+    //Serial.println(KpTops);
+  //}
+  //
+  rCode = 0;
+  rCode += popcMqtt.subscribe( TdTops );
+  //if ( rCode) {
+    //Serial.print("bbrdSubs Td bad cuml RC: ");
+    //Serial.println(rCode);
+    //Serial.println(TdTops);
+  //}
+  //
+  rCode = 0;
+  rCode += popcMqtt.subscribe( TiTops );
+  //
+  //if ( rCode) {
+    //Serial.print("bbrdSubs Ti bad cuml RC: ");
+    //Serial.println(rCode);
+    //Serial.println(TiTops);
+  //}
+  //
+  rCode = 0;
+  rCode += popcMqtt.subscribe( userTops );
+  //
+  //if ( rCode) {
+    //Serial.print("bbrdSubs Ti bad cuml RC: ");
+    //Serial.println(rCode);
+    //Serial.println(TiTops);
+  //}
+  //
+}  
+
 void pwmdExpo( byte tensMaxe) {
 #if IN_ESP
 #else 
@@ -881,68 +904,60 @@ void pwmdInit() {
   pwmdExpo(10);
   pinMode( PWMD_OPIN, PWMD_MODE);
   #endif
-  pwmdTogo  = PWMD_POLL_USEC;       // pwm drvr poll period uSec
-  pwmdPrev  = micros();             // pwm drvr poll period uSec
+  pwmdTogo  = PWMD_POLL_MSEC;       // pwm drvr poll period mSec
+  pwmdPrev  =  millis();            // pwm drvr poll period mSec
 }
 
 void pwmdLoop() {
-  tempLong = uSecPast( pwmdPrev);
-  if (( pwmdTogo - OPEN_POLL_USEC ) > tempLong ) {
+  currMSec = millis();
+  elapMSec = currMSec - pwmdPrev;
+  if (( pwmdTogo - POLL_SLOP_MSEC ) > elapMSec ) {
     return;
   } else {
-    //Serial.print("pwmdPoll");
-    pwmdPrev = uSecCurr;
-    // in templong: uSec Poll + late uSec
-    pwmdTogo = 2 * PWMD_POLL_USEC - tempLong;
+    pwmdPrev = millis();
+    pwmdTogo = PWMD_POLL_MSEC;
     //
     if (pwmdRctl == 0) {
-      //Serial.print("pwmdRctl==0");
+      Serial.print("pwmdRctl==0");
       pwmdOutp = 0;
     } else {
-      //?? pwmdTogo -= uSecPast(pwmdPrev);
-      //Serial.print("pwmdOPOLL");
-      //?? if (pwmdTogo <= OPEN_POLL_USEC ) {
-        //Serial.print("pwmd");
-        pwmdPrev = uSecCurr;
-        pwmdTogo += PWMD_POLL_USEC;
-        // last run control test has precedence 
-        if ( pwmdRctl & RCTL_MSET) {
-          pwmdTarg = byte(msetPwmd);
-        }
-        if ( pwmdRctl & RCTL_AUTO) {
-          pwmdTarg = byte(pidcUn);
-        }
-        //Serial.print("pwmdTarg: ");
-        //Serial.println(pwmdTarg);
-        pwmdOutp = byte(pwmdTarg);
-        pwmdPcnt = byte (100.0 * pwmdOutp / 250);
-        if ( 0 ) {
-             analogWrite( PWMD_OPIN, pwmdOutp);
-        } else {
-        }
-      //??}
+      // last run control test has precedence 
+      if ( pwmdRctl & RCTL_MSET) {
+        pwmdTarg = byte(msetPwmd);
+      }
+      if ( pwmdRctl & RCTL_AUTO) {
+        pwmdTarg = byte(pidcUn);
+      }
+      //Serial.print("pwmdTarg: ");
+      //Serial.println(pwmdTarg);
+      pwmdOutp = byte(pwmdTarg);
+      pwmdPcnt = byte (100.0 * pwmdOutp / 250);
+      if ( 0 ) {
+        analogWrite( PWMD_OPIN, pwmdOutp);
+      } else {
+      }
     }  
   }  
 }
 
 /// Run Control
-void rctlInit() {
+void profInit() {
   // simulation
   tcplTmpC = 20.0;
   profTmpC = 20.0;
   profSecs = 0;
-  rctlTogo = RCTL_POLL_USEC;   //  poll period uSec
-  rctlPrev = micros();
+  profTogo = PROF_POLL_MSEC;   //  poll period mSec
+  profPrev =  millis();
 }
 
-void rctlLoop() {
-  tempLong = uSecPast( rctlPrev);
-  if (( rctlTogo - OPEN_POLL_USEC ) > tempLong ) {
+void profLoop() {
+  currMSec = millis();
+  elapMSec = currMSec - profPrev;
+  if (( profTogo - POLL_SLOP_MSEC ) > elapMSec ) {
     return;
   } else {
-    rctlPrev = uSecCurr;
-    // in templong: uSec since last service
-    rctlTogo = 2 * RCTL_POLL_USEC - tempLong;
+    profPrev = millis();
+    profTogo = PROF_POLL_MSEC ;
     // 
     profSecs += 1;
     if (profSele < 0) {
@@ -1002,31 +1017,31 @@ void rctlLoop() {
     
 /// THERMOCOUPLE
 void tcplInit() {
-  tcplTogo  = TCPL_POLL_USEC;       // thermocouple norm poll period uSec
+  tcplTogo  = TCPL_POLL_MSEC;       // thermocouple norm poll period mSec
   // stabilize wait .. lcds banner is 1000mA anyway
   // delay(500);
-  tcplTogo = PIDC_POLL_USEC;      // PID control poll period uSec
-  tcplPrev = micros();
+  tcplTogo = PIDC_POLL_MSEC;      // PID control poll period mSec
+  tcplPrev =  millis();
   tcplTmpC = sensTmpC = 20;
 }
 
 void tcplVirtLoop() {
   int pwmdMavg; 
-  tempLong = uSecPast( tcplPrev);
-  if (( tcplTogo - OPEN_POLL_USEC ) > tempLong ) {
+  currMSec = millis();
+  elapMSec = currMSec - tcplPrev;
+  if (( tcplTogo - POLL_SLOP_MSEC ) > elapMSec ) {
     return;
   } else {
-    tcplPrev = uSecCurr;
-    // in templong: uSec since last service
-    tcplTogo = 2 * TCPL_POLL_USEC - tempLong;
+    tcplPrev = millis();
+    tcplTogo = TCPL_POLL_MSEC;
     // virt tcpl 
     pwmdMavg = int( 0.1 * pwmdOutp    \
                  +  0.2 * pwmdHist[0] \
-                 +  1.0 * pwmdHist[1] \
-                 +  4.0 * pwmdHist[2] \
-                 +  4.0 * pwmdHist[3] ) ; 
+                 +  0.4 * pwmdHist[1] \
+                 +  2.0 * pwmdHist[2] \
+                 +  1.0 * pwmdHist[3] ) ; 
     tcplTmpC = tcplTmpC + float(pwmdMavg) / 250.0 \
-                 -  1 * (tcplTmpC - 20.0) / 40.0;
+                 -  0.5 * (tcplTmpC - 20.0) / 64.0;
     sensTmpC = tcplTmpC;
     pwmdHist[3] = pwmdHist[2] / 4; 
     pwmdHist[2] = pwmdHist[1]; 
@@ -1037,34 +1052,29 @@ void tcplVirtLoop() {
 
 #if IN_UNO
 void tcplRealLoop() {
-  tempLong = uSecPast( tcplPrev);
-  if (( tcplTogo - OPEN_POLL_USEC ) > tempLong ) {
+  currMSec = millis();
+  elapMSec = currMSec - tcplPrev;
+  if (( tcplTogo - POLL_SLOP_MSEC ) > elapMSec ) {
     return;
   } else {
-    tcplPrev = uSecCurr;
-    // in templong: uSec Poll + late uSec
-    tcplTogo = 2 * TCPL_POLL_USEC - tempLong;
+    tcplPrev = millis();
+    tcplTogo = TCPL_POLL_MSEC - elapMSec;
     //
     if (tcplRctl== 0) {
       // Rctl == 0 Shutdown
       tcplTmpC = 19;
     } else {
-      tcplTogo -= uSecPast(tcplPrev);
-      if (tcplTogo <= OPEN_POLL_USEC ) {
-        tcplPrev = uSecCurr;
-        tcplTogo += TCPL_POLL_USEC;
-        // Read thermocouple 
-        tcplTmpC = tcpl.readCelsius();
-        if (isnan(tcplTmpC)) {
-          lcd.clear();
-          lcd.home ();
-          lcd.print(F("@tcplRealLoop()"));
-          lcd.setCursor ( 0, 1 );
-          lcd.print(F("Thermocouple Err"));
-          delay ( 5000 );                //  1000mS startup delay
-          lcd.clear();
-        }
-      }  
+      // Read thermocouple 
+      tcplTmpC = tcpl.readCelsius();
+      if (isnan(tcplTmpC)) {
+        lcd.clear();
+        lcd.home ();
+        lcd.print(F("@tcplRealLoop()"));
+        lcd.setCursor ( 0, 1 );
+        lcd.print(F("Thermocouple Err"));
+        delay ( 5000 );                //  1000mS startup delay
+        lcd.clear();
+      }
     }  
   }  
 }  
@@ -1072,64 +1082,69 @@ void tcplRealLoop() {
 
 ///
 void userInit() {
-  userInpu = 0.0;
   profSele = 0;
   profCdpm = userCdpm =  0;
   profTbeg = profTmpC = userTmpC = 20;
 }
 
 void userLoop() {
-  // when characters arrive over the serial port...
+  // test for when chars arriving on serial port, set ATTN
   if (Serial.available()) {
-    // wait for entire message  .. 9600cps 10 char ~ 1mSec
+    // wait for entire message  .. 115200cps 14 char ~ 1mSec
     delay(1);
     // read all the available characters
-    userLin0 = Serial.readStringUntil('\n');
-    if ((userLin0[0] == 'P') || (userLin0[0] == 'P')) {
-      // select stored profile
-      profSele = (userLin0.substring(1)).toInt();
-      //Serial.println(F("userfSele"));
-      profSecs = 0;
-    }
-    if ((userLin0[0] == 'R') || (userLin0[0] == 'r')) {
-      // set desired temp ramp rate degC/min
-      profCdpm = userCdpm = (userLin0.substring(1)).toInt();
-      profTbeg = int(tcplTmpC);
-      profSecs = 0;
-      if (profCdpm == 0) bbrdTmde = bbrdSetp;
-      //Serial.print(F("\nuserCdpm"));
-      //Serial.println(profCdpm);
-    }
-    if ((userLin0[0] == 'S') || (userLin0[0] == 's')) {
-      // set desired temperatre degC
-      userTmpC = (userLin0.substring(1)).toInt();
-      if (userTmpC > 250) userTmpC = 250;
-      profTmpC = userTmpC;
-      profTbeg = int(tcplTmpC);
-      profSecs = 0;
-      pwmdRctl &= ~RCTL_MSET;
-      pwmdRctl |=  RCTL_AUTO;
-    }
-    if ((userLin0[0] == 'W') || (userLin0[0] == 'w')) {
-      // set new pwmD Width
-      msetPwmd = (userLin0.substring(1)).toInt();
-      if (msetPwmd > 99) userTmpC = 100;
-      msetPwmd = int ( 250 * msetPwmd / 100.0 );
-      pwmdRctl &= ~RCTL_AUTO;
-      pwmdRctl |=  RCTL_MSET;
-      // manual pwm width will apply in pwmd loop 
-    }
-    if ((userLin0[0] == 'Y') || (userLin0[0] == 'y')) {
-      // set desired temperatre degC
-      userTmpC = (userLin0.substring(1)).toInt();
-      if (userTmpC > 250) userTmpC = 250;
-      profTmpC = userTmpC;
-      profTbeg = int(tcplTmpC);
-      profSecs = 0;
-      //Serial.print(F("\nuserTmpC"));
-      //Serial.println(profTmpC);
-    }
+    userCmdl = Serial.readStringUntil('\n');
+    userRctl |= RCTL_ATTN;
   }
+}    
+
+void userSvce() {
+  // called from loopp() if RCTL_ATTN via either serial or MQTT    
+  if ((userCmdl[0] == 'P') || (userCmdl[0] == 'P')) {
+    // select stored profile
+    profSele = (userCmdl.substring(1)).toInt();
+    //Serial.println(F("userfSele"));
+    profSecs = 0;
+  }
+  if ((userCmdl[0] == 'R') || (userCmdl[0] == 'r')) {
+    // set desired temp ramp rate degC/min
+    profCdpm = userCdpm = (userCmdl.substring(1)).toInt();
+    profTbeg = int(tcplTmpC);
+    profSecs = 0;
+    if (profCdpm == 0) bbrdTmde = bbrdSetp;
+    //Serial.print(F("\nuserCdpm"));
+    //Serial.println(profCdpm);
+  }
+  if ((userCmdl[0] == 'S') || (userCmdl[0] == 's')) {
+    // set desired temperatre degC
+    userTmpC = (userCmdl.substring(1)).toInt();
+    if (userTmpC > 299) userTmpC = 299;
+    profTmpC = userTmpC;
+    profTbeg = int(tcplTmpC);
+    profSecs = 0;
+    pwmdRctl &= ~RCTL_MSET;
+    pwmdRctl |=  RCTL_AUTO;
+  }
+  if ((userCmdl[0] == 'W') || (userCmdl[0] == 'w')) {
+    // set new pwmD Width
+    msetPwmd = (userCmdl.substring(1)).toInt();
+    if (msetPwmd > 99) userTmpC = 100;
+    msetPwmd = int ( 250 * msetPwmd / 100.0 );
+    pwmdRctl &= ~RCTL_AUTO;
+    pwmdRctl |=  RCTL_MSET;
+    // manual pwm width will apply in pwmd loop 
+  }
+  if ((userCmdl[0] == 'Y') || (userCmdl[0] == 'y')) {
+    // set desired temperatre degC
+    userTmpC = (userCmdl.substring(1)).toInt();
+    if (userTmpC > 250) userTmpC = 250;
+    profTmpC = userTmpC;
+    profTbeg = int(tcplTmpC);
+    profSecs = 0;
+    //Serial.print(F("\nuserTmpC"));
+    //Serial.println(profTmpC);
+  }
+  userRctl &= ~RCTL_ATTN;
 }
 
 void setup() {
@@ -1140,7 +1155,8 @@ void setup() {
   userInit();
   tcplInit();
   pidcInit();
-  //pwmdInit();
+  pwmdInit();
+  profInit();
 #if IN_ESP
   if (wifiRctl & RCTL_RUNS) {
     Serial.println();
@@ -1163,9 +1179,9 @@ void setup() {
     popcMqtt.onData(dataCbck);
     Serial.println("Connect to mqtt...");
     popcMqtt.connect();
-    delay(1000);
+    delay(4000);
+    popcSubs();
     bbrdPubl(3);
-    bbrdSubs(1);
   }  
 
   //  Tick setup 
@@ -1176,35 +1192,23 @@ void setup() {
   //      ts.add(0, 3000, sendData)
   // 
   int shedRcod;
-  if (! popcShed.add( 0,  500, cbck0500)) {
-    Serial.print("popcShed add cbck0500 RC: ");
-    Serial.println(shedRcod);
-  }
   shedRcod = popcShed.add( 1, 1000, cbck1000);
   shedRcod = popcShed.add( 2, 2000, cbck2000);
-  shedRcod = popcShed.add( 3, 3000, cbck3000);
-  shedRcod = popcShed.add( 4, 5000, cbck5000);
+  shedRcod = popcShed.add( 3, 5000, cbck5000);
   
 #else 
   lcdsInit();
 #endif 
-  rctlInit();
   Serial.println("popcEsp init end");
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
-  if (cb05Rctl & RCTL_ATTN) {
-    cb05Svce();
-  }  
   if (cb10Rctl & RCTL_ATTN) {
     cb10Svce();
   }  
   if (cb20Rctl & RCTL_ATTN) {
     cb20Svce();
-  }  
-  if (cb30Rctl & RCTL_ATTN) {
-    cb30Svce();
   }  
   if (cb50Rctl & RCTL_ATTN) {
     cb50Svce();
@@ -1214,13 +1218,16 @@ void loop() {
   pwmdLoop();
   //
   userLoop();
+  if (userRctl & RCTL_ATTN) {
+    userSvce();
+  }  
   bbrdLoop();
 #if IN_ESP
   popcShed.update();
 #else 
   lcdsLoop();
 #endif  
-  rctlLoop();
+  profLoop();
   //frntLoop();
   delay(10);
 }
