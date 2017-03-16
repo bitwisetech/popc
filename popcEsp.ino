@@ -22,7 +22,7 @@
 //  pwmd  8-bit PWM control via hardware pwm pins 
 //  prof  Profile control; selects auto/manual temp setpt, manual pwm width, real/fake temp sensor
 //  tcpl  MAX31855 SPI thermocouple temperature sensor or virtual temp readings for debug
-//  user  receive user's commands via serial port ( and MQTT ?? ) for setpoint, ramp, profile modes 
+//  user  receive user's commands via serial port, MQTT for setpoint, ramp, profile modes 
 //    
 //  Backport to Arduino Nano is untested  Arduino H/W details:  
 ///
@@ -96,8 +96,9 @@ char bbrdRamp = 'r';
 char bbrdSetp = 's';
 char bbrdTmde;
 char *dbugLine = " <==>                                                                           ";
-char scalCent = 'C';
-char scalFahr = 'F';
+char centScal  = 'C';
+char fahrScal  = 'F';
+char userScal  = 'C';
 
 String userCmdl("exactly thirty one chars length");  // Crashable ! 
 
@@ -143,7 +144,7 @@ const char GammaTops[] = "/popc/pidc/Gamma";
 const char userTops[]  = "/popc/userCmdl";
 const char psecTops[]  = "/popc/profSecs";
 const char pcntTops[]  = "/popc/pwmd/perCent";
-const char ptmpTops[]  = "/popc/profTmpC";
+const char ptmpTops[]  = "/popc/profDegs";
 const char c500Tops[]  = "/popc/cbck5000";
 
 // create MQTT object with IP address, port of MQTT broker e.g.mosquitto application
@@ -172,9 +173,9 @@ float pidcPc, pidcIc, pidcDc       = 0.0; // cumulative P-I-D components
 float pidcUn = 0.0;                       // PID controller Output
 
 // pwmd vbls
-int  pwmdFreq, pwmdDuty, pwmdTarg, pwmdOutp;
+int  pwmdFreq, pwmdDuty, pwmdTarg, pwmdOutp; // Freq, Duty Cycle Target (250max) Output
 int  pwmdHist[] = { 0, 0, 0, 0};
-byte pwmdPcnt;
+byte pwmdPcnt;                               // Percent duty cycle 
 
 // millisecond poll values
 #define TCPL_POLL_MSEC  100UL            // 250mS termocouple poll
@@ -221,8 +222,8 @@ TickerScheduler popcShed(3);
 //  time
 unsigned int  mSecOflo;
 unsigned long currMSec, elapMSec = 0UL;
-unsigned long lcdsPrev, pidcPrev, profPrev, pwmdPrev, tcplPrev = 0UL;
-unsigned long lcdsTogo, pidcTogo, profTogo, pwmdTogo, tcplTogo = 0UL;
+unsigned long lcdsPrev, pidcPrev, profPrev, pwmdPrev, tcplPrev = 0UL; // mSec time of prev exec 
+unsigned long lcdsTogo, pidcTogo, profTogo, pwmdTogo, tcplTogo = 0UL; // mSec time to next exec
 //
 // wifi
 //abconst char* ssid     = "ssid";
@@ -258,21 +259,29 @@ const char* password = "pickledcrab1102190";
 //MAX31855 tcpl(TCPL_CS);
 MAX31855 tcpl(TCPL_CL, TCPL_CS, TCPL_DO);
 
-double tcplTmpC;
-
 //
-float         targTmpC, sensTmpC;
-int           profSele, profTmpC, profCdpm, profTbeg, profSecs;
-int           userCdpm, msetPwmd, userTmpC, tempIndx; 
+float         targTmpC, sensTmpC;             // target, sensor temperature deg C
+int           msetDuty;                        // manual oride duty cycle, user temp deg C 
+int           profSele, profTbeg, profSecs ;  // profile selector, step start, elapsed time
+int           profTmpC, profCdpm, userDegs;   // profile final temp, rate, user C/F tempr 
+int           tempIndx;                       // temporary array indexer
 
 /// Common 
 ///   Convert
 float floatCtoF( float celsInp) {
-  return (float( ((celsInp + 40) * 9L / 5L )  -40 ));
+  return (float( ((celsInp + 40.0) * 9.0 / 5.0 )  -40.0 ));
 }  
 
 float floatFtoC( float fahrInp) {
-  return (float( ((fahrInp + 40) * 5L / 9L )  -40 ));
+  return (float( ((fahrInp + 40.0) * 5.0 / 9.0 )  -40.0 ));
+}  
+  
+int    intgCtoF( int   celsInp) {
+  return (int  ( ((celsInp + 40.0) * 9.0 / 5.0 )  -40.0 ));
+}  
+
+int    intgFtoC( int   fahrInp) {
+  return (int  ( ((fahrInp + 40.0) * 5.0 / 9.0 )  -40.0 ));
 }  
   
 //  Timing 
@@ -285,23 +294,38 @@ unsigned long mSecPast( unsigned long mSecLast) {
 
 //  billboard
 void bbrdFill() {
+  
   // strf ops append null chars, fill single chars later 
-  dtostrf( sensTmpC, 3, 0, &bbrdLin0[0] );
-  dtostrf( targTmpC, 3, 0, &bbrdLin0[7] );
+  if ( userScal == fahrScal) {
+    dtostrf( floatCtoF(sensTmpC), 3, 0, &bbrdLin0[0] );
+  } else {
+    dtostrf(           sensTmpC,  3, 0, &bbrdLin0[0] );
+  }  
+  if ( userScal == fahrScal) {
+    dtostrf( floatCtoF(targTmpC), 3, 0, &bbrdLin0[7] );
+  } else {
+    dtostrf(           targTmpC,  3, 0, &bbrdLin0[7] );
+  }  
   dtostrf( pwmdPcnt, 3, 0, &bbrdLin0[12]);
   //
-  bbrdLin0[3]  = 'C';
+  bbrdLin0[3]  = userScal;
   bbrdLin0[4]  = '-';
   bbrdLin0[5]  = '>';
   bbrdLin0[6]  = 'S';
   bbrdLin0[10] = ' ';
-  //ldsLin0[10] = 'c';
-  //bbrdLin0[11] = ' ';
   bbrdLin0[11] = 'W';
   bbrdLin0[15] = '%';
   //
-  dtostrf( profTmpC, 3, 0, &bbrdLin1[1] );
-  dtostrf( profCdpm, 3, 0, &bbrdLin1[6] );
+  if ( userScal == fahrScal) {
+    dtostrf( floatCtoF(profTmpC), 3, 0, &bbrdLin1[1] );
+  } else {
+    dtostrf(           profTmpC,  3, 0, &bbrdLin1[1] );
+  }  
+  if ( (profCdpm > 0 ) && (userScal == fahrScal) ) {
+    dtostrf( floatCtoF(profCdpm), 3, 0, &bbrdLin1[6] );
+  } else {
+    dtostrf(           profCdpm,  3, 0, &bbrdLin1[6] );
+  }  
   dtostrf( profSecs, 4, 0, &bbrdLin1[12]);
   //
   bbrdLin1[0]  = 'P';
@@ -360,7 +384,7 @@ void frntRecv() {
   if(index==26  && (Auto_Man==0 || Auto_Man==1)&& (Direct_Reverse==0 || Direct_Reverse==1))
   {
     targTmpC=float(frntComm.asFloat[0]);
-    //tcplTmpC=double(frntComm.asFloat[1]); // * the user has the ability to send the 
+    //sensTmpC=double(frntComm.asFloat[1]); // * the user has the ability to send the 
                                             //   value of "Input"  in most cases (as 
                                             //   in this one) this is not needed.
     if(Auto_Man==0)                         // * only change the output if we are in 
@@ -387,7 +411,7 @@ void frntSend() {
   Serial.print(F("PID "));
   Serial.print(targTmpC);   
   Serial.print(F(" "));
-  Serial.print(tcplTmpC);   
+  Serial.print(sensTmpC);   
   Serial.print(F(" "));
   Serial.print(pidcUn);   
   Serial.print(F(" "));
@@ -768,7 +792,11 @@ void cb50Svce() {
   dtostrf( pidcTd, 8, 3, mqttVals);
   rCode += popcMqtt.publish( (const char * )TdTops,   (const char *)(mqttVals), 15 ); 
   //
-  dtostrf( profTmpC, 8, 3, mqttVals);
+  if ( userScal == fahrScal) {
+    dtostrf( floatCtoF(profTmpC), 8, 3, mqttVals);
+  } else {
+    dtostrf(           profTmpC,  8, 3, mqttVals);
+  }  
   rCode += popcMqtt.publish( (const char * )ptmpTops, (const char *)(mqttVals), 15 ); 
   //
   dtostrf( pwmdPcnt, 8, 3, mqttVals);
@@ -923,7 +951,7 @@ void pwmdLoop() {
     } else {
       // last run control test has precedence 
       if ( pwmdRctl & RCTL_MSET) {
-        pwmdTarg = byte(msetPwmd);
+        pwmdTarg = byte( 250.0 * msetDuty / 100.0 );
       }
       if ( pwmdRctl & RCTL_AUTO) {
         pwmdTarg = byte(pidcUn);
@@ -940,10 +968,10 @@ void pwmdLoop() {
   }  
 }
 
-/// Run Control
+/// Profile Control
 void profInit() {
   // simulation
-  tcplTmpC = 20.0;
+  sensTmpC = 20.0;
   profTmpC = 20.0;
   profSecs = 0;
   profTogo = PROF_POLL_MSEC;   //  poll period mSec
@@ -967,7 +995,7 @@ void profLoop() {
       targTmpC = float(profTmpC);
       if (profCdpm != 0) {
         if (profTmpC >= profTbeg) {
-          if ((tcplTmpC >=  targTmpC) && (profSecs > 10)) {
+          if ((sensTmpC >=  targTmpC) && (profSecs > 10)) {
             profCdpm = 0;
             profSecs = 0;
             bbrdTmde = bbrdHold;
@@ -977,7 +1005,7 @@ void profLoop() {
                      + float (profSecs) * float(profCdpm) / 60.0;
           }  
         } else {
-          if ((tcplTmpC <= targTmpC) && (profSecs > 10)) {
+          if ((sensTmpC <= targTmpC) && (profSecs > 10)) {
             profCdpm = 0;
             profSecs = 0;
             bbrdTmde = bbrdHold;
@@ -1022,7 +1050,7 @@ void tcplInit() {
   // delay(500);
   tcplTogo = PIDC_POLL_MSEC;      // PID control poll period mSec
   tcplPrev =  millis();
-  tcplTmpC = sensTmpC = 20;
+  sensTmpC = 20;
 }
 
 void tcplVirtLoop() {
@@ -1037,12 +1065,11 @@ void tcplVirtLoop() {
     // virt tcpl 
     pwmdMavg = int( 0.1 * pwmdOutp    \
                  +  0.2 * pwmdHist[0] \
-                 +  0.4 * pwmdHist[1] \
-                 +  2.0 * pwmdHist[2] \
-                 +  1.0 * pwmdHist[3] ) ; 
-    tcplTmpC = tcplTmpC + float(pwmdMavg) / 250.0 \
-                 -  0.5 * (tcplTmpC - 20.0) / 64.0;
-    sensTmpC = tcplTmpC;
+                 +  0.6 * pwmdHist[1] \
+                 +  0.8 * pwmdHist[2] \
+                 +  0.4 * pwmdHist[3] ) ; 
+    sensTmpC = sensTmpC + float(pwmdMavg) / 250.0 \
+                 -  0.5 * (sensTmpC - 20.0) / 64.0;
     pwmdHist[3] = pwmdHist[2] / 4; 
     pwmdHist[2] = pwmdHist[1]; 
     pwmdHist[1] = pwmdHist[0]; 
@@ -1052,6 +1079,7 @@ void tcplVirtLoop() {
 
 #if IN_UNO
 void tcplRealLoop() {
+  double tcplTmpC;
   currMSec = millis();
   elapMSec = currMSec - tcplPrev;
   if (( tcplTogo - POLL_SLOP_MSEC ) > elapMSec ) {
@@ -1062,7 +1090,7 @@ void tcplRealLoop() {
     //
     if (tcplRctl== 0) {
       // Rctl == 0 Shutdown
-      tcplTmpC = 19;
+      sensTmpC = 20;
     } else {
       // Read thermocouple 
       tcplTmpC = tcpl.readCelsius();
@@ -1075,16 +1103,18 @@ void tcplRealLoop() {
         delay ( 5000 );                //  1000mS startup delay
         lcd.clear();
       }
+     sensTmpC = float( tcplTmpC); 
     }  
   }  
 }  
 #endif
 
-///
+// User Commands 
 void userInit() {
   profSele = 0;
-  profCdpm = userCdpm =  0;
-  profTbeg = profTmpC = userTmpC = 20;
+  profCdpm =  0;
+  userScal = centScal;
+  profTbeg = profTmpC = userDegs = 20;
 }
 
 void userLoop() {
@@ -1100,6 +1130,12 @@ void userLoop() {
 
 void userSvce() {
   // called from loopp() if RCTL_ATTN via either serial or MQTT    
+  if ((userCmdl[0] == 'C') || (userCmdl[0] == 'c')) {
+    userScal = centScal;
+  }
+  if ((userCmdl[0] == 'F') || (userCmdl[0] == 'f')) {
+    userScal = fahrScal;
+  }
   if ((userCmdl[0] == 'P') || (userCmdl[0] == 'P')) {
     // select stored profile
     profSele = (userCmdl.substring(1)).toInt();
@@ -1108,41 +1144,42 @@ void userSvce() {
   }
   if ((userCmdl[0] == 'R') || (userCmdl[0] == 'r')) {
     // set desired temp ramp rate degC/min
-    profCdpm = userCdpm = (userCmdl.substring(1)).toInt();
-    profTbeg = int(tcplTmpC);
+    profCdpm = (userCmdl.substring(1)).toInt();
+    if ( userScal == fahrScal) {
+      profCdpm = intgFtoC( profCdpm);
+    }
+    if (profCdpm < 0)  profCdpm = 0;
+    profTbeg = int(sensTmpC);
     profSecs = 0;
     if (profCdpm == 0) bbrdTmde = bbrdSetp;
-    //Serial.print(F("\nuserCdpm"));
+    //Serial.print(F("\nprofCdpm"));
     //Serial.println(profCdpm);
   }
   if ((userCmdl[0] == 'S') || (userCmdl[0] == 's')) {
     // set desired temperatre degC
-    userTmpC = (userCmdl.substring(1)).toInt();
-    if (userTmpC > 299) userTmpC = 299;
-    profTmpC = userTmpC;
-    profTbeg = int(tcplTmpC);
+    userDegs = (userCmdl.substring(1)).toInt();
+    if ( userScal == fahrScal) {
+      profTmpC = intgFtoC( userDegs); 
+    } else {
+      profTmpC = userDegs;
+    }
+    if (profTmpC > 299) profTmpC = 299;
+    profTbeg = int(sensTmpC);
     profSecs = 0;
     pwmdRctl &= ~RCTL_MSET;
     pwmdRctl |=  RCTL_AUTO;
   }
   if ((userCmdl[0] == 'W') || (userCmdl[0] == 'w')) {
-    // set new pwmD Width
-    msetPwmd = (userCmdl.substring(1)).toInt();
-    if (msetPwmd > 99) userTmpC = 100;
-    msetPwmd = int ( 250 * msetPwmd / 100.0 );
+    // set new pwmD Width, run control flag to indicate manual override
+    msetDuty = (userCmdl.substring(1)).toInt();
+    if (msetDuty > 99) msetDuty = 100;
     pwmdRctl &= ~RCTL_AUTO;
     pwmdRctl |=  RCTL_MSET;
     // manual pwm width will apply in pwmd loop 
   }
   if ((userCmdl[0] == 'Y') || (userCmdl[0] == 'y')) {
     // set desired temperatre degC
-    userTmpC = (userCmdl.substring(1)).toInt();
-    if (userTmpC > 250) userTmpC = 250;
-    profTmpC = userTmpC;
-    profTbeg = int(tcplTmpC);
-    profSecs = 0;
-    //Serial.print(F("\nuserTmpC"));
-    //Serial.println(profTmpC);
+    Serial.println("Pwm frequency control TBD");
   }
   userRctl &= ~RCTL_ATTN;
 }
