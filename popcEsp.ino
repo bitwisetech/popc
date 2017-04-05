@@ -1510,12 +1510,13 @@ void tcplRealLoop() {
         lcd.print(F("@tcplRealLoop()"));
         lcd.setCursor ( 0, 1 );
         lcd.print(F("Thermocouple Err"));
-        pidcInit();
+        //pidcInit();
         //pwmdInit();
         delay (2000 );                //  1000mS startup delay
         lcd.clear();
-      }
-     sensTmpC = float( tcplTmpC); 
+      } else {
+        sensTmpC = float( tcplTmpC); 
+      }  
     }  
   }  
 }  
