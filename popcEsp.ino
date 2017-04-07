@@ -1401,23 +1401,23 @@ void rotsLoop() {
           break;
           case 7:
             profStep = 7;
-            userCmdl = "R45";
+            userCmdl = "R40";
           break;
           case 8:
             profStep = 8;
-            userCmdl = "R600";
+            userCmdl = "R60";
           break;
           case 9:
             profStep = 9;
-            userCmdl = "W10";
+            userCmdl = "W20";
           break;
           case 10:
             profStep = 10;
-            userCmdl = "W20";
+            userCmdl = "W50";
           break;
           case 11:
             profStep = 11;
-            userCmdl = "W50";
+            userCmdl = "W60";
           break;
           case 12:
             profStep = 12;
@@ -1510,11 +1510,10 @@ void tcplRealLoop() {
         lcd.print(F("@tcplRealLoop()"));
         lcd.setCursor ( 0, 1 );
         lcd.print(F("Thermocouple Err"));
-        //pidcInit();
-        //pwmdInit();
-        delay (2000 );                //  1000mS startup delay
+        delay (500);
         lcd.clear();
       } else {
+        // Only update sensed temp with a valid reading 
         sensTmpC = float( tcplTmpC); 
       }  
     }  
