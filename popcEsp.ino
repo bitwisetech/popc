@@ -1,6 +1,6 @@
 /// popcEsp popc port to esp with MQTT, tickScheduler, is MQTT client popc
 //  Ap     
-//  Ap     
+//  Ap09 Arti branch UNO+ESP both connect OK to Artisan, all Serial output switched 
 //  Ap02 Bigger delay in virtTcpl, better everage in ROC est; Builds ESP, UNO  
 //  Ap01 Rot sw complete; Off/On SSR Driver synced with pwm driver; display format
 //  Mr31 Backport UNO with Lcds new format, Tcpl, start on RotSwitch ToDo: Hw pin alloc for ESP
@@ -53,11 +53,12 @@
 //
 
 //  Code section compiler switches 
-#define PROC_ESP      0 
-#define PROC_UNO      1 
+#define PROC_ESP      1 
+#define PROC_UNO      0 
+#define WITH_ARTI     1
 #define WITH_FRNT     0
-#define WITH_LCD      1
-#define WITH_MAX31855 1
+#define WITH_LCD      0
+#define WITH_MAX31855 0
 #define WITH_OFFN     1
  
 // milliSecond poll values
@@ -115,6 +116,11 @@ __asm volatile ("nop");
 //}
 //bbrd32 newShow;
 
+#if WITH_ARTI
+// ambient, ch1, ch2, ch3, ch4
+char artiResp[] = "023.0,128.8,138.8,000.0,000.0  ";
+#endif
+
 // billboard  Legend Lower cases: computed/Measured Upper case: User/Setpoints 
 char bbrdLin0[] = "w100% r-123 128c"; 
 char bbrdLin1[] = "P0-0 S12.3m 228C";
@@ -171,6 +177,7 @@ const char psecTops[]  = "/popc/stepSecs";
 const char pcntTops[]  = "/popc/pwmd/perCent";
 const char ptmpTops[]  = "/popc/profDegs";
 const char c500Tops[]  = "/popc/cbck5000";
+const char echoTops[]  = "/popc/cmdlEcho";
 
 #if PROC_ESP
 #include <MQTT.h>
@@ -462,6 +469,26 @@ void bbrdFill() {
   bbrdLin1[8]   = '.';
   bbrdLin1[10]   = 'm';
   bbrdLin1[11]  = ' ';
+  // 
+  #if WITH_ARTI
+  if ( userScal == fahrScal) {
+    dtostrf( floatCtoF(ambiTmpC),       5, 1, &artiResp[0]  );
+    dtostrf( floatCtoF(sensTmpC + 10 ), 5, 1, &artiResp[6]  );
+    dtostrf( floatCtoF(sensTmpC),       5, 1, &artiResp[12] );
+    dtostrf( floatCtoF(ambiTmpC -  2 ), 5, 1, &artiResp[18] );
+    dtostrf( floatCtoF(ambiTmpC -  5 ), 5, 1, &artiResp[24] );
+  } else {
+    dtostrf(           ambiTmpC,        5, 1, &artiResp[0]  );
+    dtostrf(           sensTmpC + 10,   5, 1, &artiResp[6]  );
+    dtostrf(           sensTmpC,        5, 1, &artiResp[12] );
+    dtostrf(           ambiTmpC -  2,   5, 1, &artiResp[18] );
+    dtostrf(           ambiTmpC -  5,   5, 1, &artiResp[24] );
+  } 
+  artiResp[5]  = ',';
+  artiResp[11] = ',';
+  artiResp[17] = ',';
+  artiResp[23] = ',';
+  #endif 
   //
   if (pidcRctl & (RCTL_INFO | RCTL_BBRD) ){
     bbrdLin1[0]  = 'p';
@@ -481,10 +508,13 @@ void bbrdLoop() {
 }
 
 void bbrdPubl( byte tTyp) {
+#if WITH_ARTI
+#else
   if (pidcRctl & (RCTL_INFO & RCTL_BBRD) ){
     Serial.print("bbrdPubl tTyp: ");
     Serial.println(tTyp);
   }
+#endif  
 }  
 
 ///  Front Side Serial Interface to PC 'Processing' graphing app
@@ -616,12 +646,18 @@ void lcdsLoop() {
 /// MQTT Pub-Sub 
 //
 void connCbck() {
+#if WITH_ARTI
+#else
   Serial.println("connected to MQTT server");
+#endif  
 }
 
 void discCbck() {
+#if WITH_ARTI
+#else
   Serial.println("disconnected. try to reconnect...");
   //delay(500);
+#endif  
 #if PROC_ESP  
   popcMqtt.connect();
 #endif  
@@ -634,63 +670,83 @@ void publCbck() {
 void dataCbck(String& topic, String& data) {
   int   topiIndx;
   float topiValu;
+#if WITH_ARTI
+#else
   Serial.print("dataCbck topic:");
   Serial.print(topic);
   Serial.print("   data:");
   Serial.println(data);
+#endif  
   topiIndx = topic.indexOf("pidc/Kp");
-  Serial.println("cbck Kp");
   if (topiIndx >= 0){
     topiValu = data.toFloat();
     if ( topiValu != pidcKp) {
+      pidcKp = topiValu;
+#if WITH_ARTI
+#else
       Serial.print("new Kp: ");
       Serial.println(topiValu);
-      pidcKp = topiValu;
+#endif      
     }  
   }
   topiIndx = topic.indexOf("pidc/Td");
   if (topiIndx >= 0){
     topiValu = data.toFloat();
     if ( topiValu != pidcTd) {
+      pidcTd = topiValu;
+#if WITH_ARTI
+#else
       Serial.print("new Td: ");
       Serial.println(topiValu);
-      pidcTd = topiValu;
+#endif      
     }  
   }
   topiIndx = topic.indexOf("pidc/Ti");
   if (topiIndx >= 0){
     topiValu = data.toFloat();
     if ( topiValu != pidcTi) {
+      pidcTi = topiValu;
+#if WITH_ARTI
+#else
       Serial.print("new Ti: ");
       Serial.println(topiValu);
-      pidcTi = topiValu;
+#endif      
     }  
   }  
   topiIndx = topic.indexOf("pidc/Beta");
   if (topiIndx >= 0){
     topiValu = data.toFloat();
     if ( topiValu != pidcBeta) {
+      pidcBeta = topiValu;
+#if WITH_ARTI
+#else
       Serial.print("new Beta: ");
       Serial.println(topiValu);
-      pidcBeta = topiValu;
+#endif      
     }  
   }
   topiIndx = topic.indexOf("pidc/Gamma");
   if (topiIndx >= 0){
     topiValu = data.toFloat();
     if ( topiValu != pidcGamma) {
+      pidcGamma = topiValu;
+#if WITH_ARTI
+#else
       Serial.print("new Gamma: ");
       Serial.println(topiValu);
-      pidcGamma = topiValu;
+#endif      
     }  
   }
   topiIndx = topic.indexOf("userCmdl");
   if (topiIndx >= 0){
     // copy data into user command line
     userCmdl = data;
+    userRctl |= RCTL_ATTN; 
+#if WITH_ARTI
+#else
     Serial.print("User Command: ");
     Serial.println(userCmdl);
-    userRctl |= RCTL_ATTN; 
+#endif      
   }  
 }
 
@@ -1055,12 +1111,18 @@ void pidcLoop() {
       if ( dUn > (pidcUMax - Un1) ) {
         dUn = pidcUMax - Un1;
         if (pidcRctl & (RCTL_INFO | RCTL_BBRD) ) {
+#if WITH_ARTI
+#else
           Serial.println(F("maxSatn"));
+#endif          
         }  
       } else if ( dUn < (pidcUMin - Un1) ) {
         dUn = pidcUMin - Un1;
         if (pidcRctl & (RCTL_INFO | RCTL_BBRD) ) {
+#if WITH_ARTI
+#else
           Serial.println(F("minSatn"));
+#endif          
         }  
       }
       Un = Un1 + dUn;
@@ -1109,7 +1171,10 @@ void pidcDbug() {
   dbugLine[69]  = ' ';
   //
   for ( tempIndx = 0; tempIndx < 64; tempIndx++ ) {
+#if WITH_ARTI
+#else
     Serial.write(dbugLine[tempIndx]);
+#endif    
   } 
 }
 
@@ -1190,6 +1255,8 @@ void profLoop() {
     //Serial.print(prevTmpC);
     //Serial.print(" Cdpm:");
     //Serial.println(sensCdpm);
+#if WITH_ARTI
+#else    
     // Send billboardon serial 
     for ( tempIndx = 0; tempIndx < 16; tempIndx++ ) {
       Serial.write(bbrdLin0[tempIndx]);
@@ -1214,7 +1281,8 @@ void profLoop() {
       Serial.println(stepSecs);
     } else {
       // Front End 
-    } 
+    }
+#endif     
   }
 }  
 
@@ -1297,7 +1365,10 @@ void pwmdLoop() {
     pwmdTogo = PWMD_POLL_MSEC;
     //
     if (pwmdRctl == 0) {
+#if WITH_ARTI
+#else
       Serial.print("pwmdRctl==0");
+#endif      
       pwmdOutp = 0;
     } else {
       // last run control test has precedence 
@@ -1534,19 +1605,63 @@ void userLoop() {
   // test for when chars arriving on serial port, set ATTN
   if (Serial.available()) {
     // wait for entire message  .. 115200cps 14 char ~ 1mSec
-    delay(10);
+    delay(100);
     // read all the available characters
     userCmdl = Serial.readStringUntil('\n');
+    //Serial.println("loop");
+    //Serial.println(userCmdl);
     userRctl |= RCTL_ATTN;
   }
 }    
 
 void userSvce() {
-  // called from loop() if (userRctl & RCTL_ATTN) via MQTT, rotsLoop or Serial     
-  if ((userCmdl[0] == 'C') || (userCmdl[0] == 'c')) {
+  // called from loop() if (userRctl & RCTL_ATTN) via MQTT, rotsLoop or Serial
+  //Serial.println("Svce");
+  //Serial.println(userCmdl);
+#if PROC_ESP  
+  popcMqtt.publish( (const char * )echoTops, userCmdl); 
+#endif  
+#if WITH_ARTI
+  if ((userCmdl[0] == 'C') && (userCmdl[1] == 'H') && (userCmdl[2] == 'A')) {
+    //  'chan' command, respond '#'
+    Serial.println("#");
+  }  
+  //  'unit' command, set user scale 
+  if ((userCmdl[0] == 'U') && (userCmdl[1] == 'N') && (userCmdl[5] == 'C')) {
+    userScal = centScal;
+  }  
+  if ((userCmdl[0] == 'U') && (userCmdl[1] == 'N') && (userCmdl[5] == 'F')) {
+    userScal = fahrScal;
+  }
+  if ((userCmdl[0] == 'R') && (userCmdl[1] == 'E') && (userCmdl[2] == 'A')) {
+    Serial.println(artiResp);
+  }
+  if ((userCmdl[0] == 'I') && (userCmdl[1] == 'O') && (userCmdl[2] == '3')) {
+    userDuty = (userCmdl.substring(4)).toInt();
+    if (userDuty > 99) userDuty = 100;
+  }
+  if ((userCmdl[0] == 'P') && (userCmdl[1] == 'I') && (userCmdl[2] == 'D')) {
+    if ((userCmdl[4] == 'S') && (userCmdl[5] == 'V')) {
+      // set desired temperatre degC
+      userDegs = (userCmdl.substring(7)).toInt();
+      if ( userScal == fahrScal) {
+        profTmpC = intgFtoC( userDegs); 
+      } else {
+        profTmpC = userDegs;
+      }
+      if (profTmpC > maxiTmpC) profTmpC = maxiTmpC;
+      profTbeg = int(sensTmpC);
+      stepSecs = 0;
+      pwmdRctl &= ~RCTL_MSET;
+      pwmdRctl |=  RCTL_AUTO;
+    }  
+  }
+#endif 
+  //    
+  if (((userCmdl[0] == 'C') || (userCmdl[0] == 'c')) && (userCmdl[1] != 'H')) {
     userScal = centScal;
   }
-  if ((userCmdl[0] == 'F') || (userCmdl[0] == 'f')) {
+  if (((userCmdl[0] == 'F') || (userCmdl[0] == 'f')) && (userCmdl[1] != 'I')) {
     userScal = fahrScal;
   }
   if ((userCmdl[0] == 'P') || (userCmdl[0] == 'P')) {
@@ -1555,7 +1670,7 @@ void userSvce() {
     //Serial.println(F("userfSele"));
     stepSecs = 0;
   }
-  if ((userCmdl[0] == 'R') || (userCmdl[0] == 'r')) {
+  if (((userCmdl[0] == 'R') || (userCmdl[0] == 'r')) && (userCmdl[1] != 'E')) {
     // Keep user entry for billboard; convert, set profile temp ramp rate degC/min
     userDgpm = (userCmdl.substring(1)).toInt();
     if ( userScal == fahrScal) {
@@ -1607,10 +1722,14 @@ void userSvce() {
   }
   if ((userCmdl[0] == 'Y') || (userCmdl[0] == 'y')) {
     // set new PWM frequency 
-    Serial.println("Pwm frequency control TBD");
+    //Serial.println("Pwm frequency control TBD");
   }
   if ((userCmdl[0] == 'Z') || (userCmdl[0] == 'z')) {
     totlSecs = 0;
+  }
+  // For debug to see if Artisan is setting Unit C/F 
+  if ((userCmdl[0] == '?')) {
+    // Serial.println(userScal);
   }
   userRctl &= ~RCTL_ATTN;
 }
@@ -1631,25 +1750,37 @@ void setup() {
   profInit();
 #if PROC_ESP
   if (wifiRctl & RCTL_RUNS) {
+#if WITH_ARTI
+#else
     Serial.println();
     Serial.print("Connecting to ");
     Serial.println(ssid);
+#endif
     //  Wifi Setup 
     WiFi.begin(ssid, password);
     while (WiFi.status() != WL_CONNECTED) {
+#if WITH_ARTI
+#else
       Serial.print(".");
+#endif      
       delay(4000);
     }
+#if WITH_ARTI
+#else
     Serial.println("");
     Serial.println("WiFi conn to IP: ");
     Serial.println(WiFi.localIP());
+#endif
     //  MQTT Setup 
     //    setup callbacks
     popcMqtt.onConnected(connCbck);
     popcMqtt.onDisconnected(discCbck);
     popcMqtt.onPublished(publCbck);
     popcMqtt.onData(dataCbck);
+#if WITH_ARTI
+#else
     Serial.println("Connect to mqtt...");
+#endif    
     popcMqtt.connect();
     delay(8000);
     popcSubs();
@@ -1673,7 +1804,10 @@ void setup() {
 #if WITH_LCD
 lcdsInit();
 #endif
+#if WITH_ARTI
+#else    
   Serial.println("popcEsp init end");
+#endif
 }
 
 /// Arduino Loop 
