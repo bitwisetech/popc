@@ -56,11 +56,11 @@
 //
 
 //  Code section compiler switches - Rebuild and Upload after changing these 
-#define PROC_ESP      0                  // Compile for ESP8266
-#define PROC_UNO      1                  // Compile for Arduino Uno
+#define PROC_ESP      1                  // Compile for ESP8266
+#define PROC_UNO      0                  // Compile for Arduino Uno
 #define IFAC_ARTI     0                  // Start with Artisan interface on Serial
 #define IFAC_FRNT     0                  // Obsolete Front/Process interface on Serial 
-#define WITH_LCD      1                  // Hdwre has I2C 2x16 LCD display
+#define WITH_LCD      0                  // Hdwre has I2C 2x16 LCD display
 #define WITH_MAX31855 0                  // Hdwre has thermocouple + circuit
 #define WITH_OFFN     1                  // Use ~4sec Off-On SSR, not fast PWM
  
@@ -119,6 +119,8 @@ __asm volatile ("nop");
 // from another copy ??
 #include <dummy.h>
 #endif
+
+const char versChrs[] = "popc Vers 2017Ap11";
 
 /// Declarations by unit
 
@@ -1751,6 +1753,12 @@ void userSvce() {
     pwmdRctl &= ~RCTL_MANU;
     pwmdRctl |=  RCTL_AUTO;
   }
+  if ((userCmdl[0] == 'V') || (userCmdl[0] == 'v')) {
+    // Version string e if Artisan is setting Unit C/F 
+    if  (!( bbrdRctl & RCTL_ARTI )) {
+      Serial.println(versChrs);
+    }  
+  }
   if ((userCmdl[0] == 'W') || (userCmdl[0] == 'w')) {
     // set new pwmD Width, run control flag to indicate manual override
     userDuty = (userCmdl.substring(1)).toInt();
@@ -1798,7 +1806,7 @@ void setup() {
   profInit();
 #if PROC_ESP
   if (wifiRctl & RCTL_RUNS) {
-    if (( bbrdRctl & RCTL_ARTI == 0) {
+    if ( bbrdRctl & RCTL_ARTI == 0) {
       Serial.println();
       Serial.print("Connecting to ");
       Serial.println(ssid);
@@ -1806,12 +1814,12 @@ void setup() {
     //  Wifi Setup 
     WiFi.begin(ssid, password);
     while (WiFi.status() != WL_CONNECTED) {
-    if (( bbrdRctl & RCTL_ARTI == 0) {
+    if ( bbrdRctl & RCTL_ARTI == 0) {
       Serial.print(".");
     }  
       delay(4000);
     }
-    if (( bbrdRctl & RCTL_ARTI == 0) {
+    if ( bbrdRctl & RCTL_ARTI == 0) {
       Serial.println("");
       Serial.println("WiFi conn to IP: ");
       Serial.println(WiFi.localIP());
@@ -1822,7 +1830,7 @@ void setup() {
     popcMqtt.onDisconnected(discCbck);
     popcMqtt.onPublished(publCbck);
     popcMqtt.onData(dataCbck);
-    if (( bbrdRctl & RCTL_ARTI == 0) {
+    if ( bbrdRctl & RCTL_ARTI == 0) {
       Serial.println("Connect to mqtt...");
     }  
     popcMqtt.connect();
