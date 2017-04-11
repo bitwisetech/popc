@@ -682,7 +682,9 @@ if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
 }
 
 void publCbck() {
-  //Serial.println("popc publCbck");
+  if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+    Serial.println("popc publCbck");
+  }  
 }
 
 void dataCbck(String& topic, String& data) {
@@ -962,10 +964,11 @@ void offnLoop() {
     offnTogo = OFFN_POLL_MSEC ;
     //
     if (!( offnRctl & RCTL_RUNS )) {
-      //Serial.println("offnlLoop NoRuns");
+      if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) { 
+        Serial.println("offnlLoop NoRuns");
+      }  
       return; 
     } else {
-      //Serial.println("offnlLoop Runs");
       if (offnCntr == 100 ) {
         offnCntr = 0;
       } else {
@@ -1206,7 +1209,9 @@ void profLoop() {
     (stepSecs > 5998) ? (stepSecs = 0):(stepSecs += 1);
     if (profNmbr > 0) {
       // ToDo saved profiles
-      //Serial.println("profNmbr");
+      if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+        //Serial.println("profNmbr");
+      }  
     } else {
       // Default: No ramp, target setpoint temperature 
       targTmpC = float(profTmpC);
@@ -1255,12 +1260,14 @@ void profLoop() {
       sensCdpm =      ( 4 * cdpmHist[0]  +  3 * cdpmHist[1] \     
                       + 2 * cdpmHist[2]  +      cdpmHist[3] ); 
     }                  
-    //Serial.print("Curr:");
-    //Serial.print(sensTmpC);
-    //Serial.print(" Prev:");
-    //Serial.print(prevTmpC);
-    //Serial.print(" Cdpm:");
-    //Serial.println(sensCdpm);
+    if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+      //Serial.print("Curr:");
+      //Serial.print(sensTmpC);
+      //Serial.print(" Prev:");
+      //Serial.print(prevTmpC);
+      //Serial.print(" Cdpm:");
+      //Serial.println(sensCdpm);
+    }  
     if (( bbrdRctl & RCTL_ARTI ) == 0) {
       if ( bbrdRctl & RCTL_INFO ) {
         // Send billboard 'Info' on serial 
@@ -1623,8 +1630,10 @@ void userLoop() {
 
 void userSvce() {
   // called from loop() if (userRctl & RCTL_ATTN) via MQTT, rotsLoop or Serial
-  //Serial.println("Svce");
-  //Serial.println(userCmdl);
+  if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+    Serial.println("Svce");
+    Serial.println(userCmdl);
+  }  
 #if PROC_ESP  
   popcMqtt.publish( (const char * )echoTops, userCmdl); 
 #endif  
@@ -1698,7 +1707,9 @@ void userSvce() {
   if ((userCmdl[0] == 'P') || (userCmdl[0] == 'P')) {
     // TBD select stored profile
     profNmbr = (userCmdl.substring(1)).toInt();
-    //Serial.println(F("userfSele"));
+    if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+      //Serial.println(F("userfSele"));
+    }  
     stepSecs = 0;
   }
   if (((userCmdl[0] == 'R') || (userCmdl[0] == 'r')) && (userCmdl[1] != 'E')) {
@@ -1721,8 +1732,10 @@ void userSvce() {
     // seting ramp unsets manual PWM width 
     pwmdRctl &= (~RCTL_MANU);
     pwmdRctl |=  RCTL_AUTO;
-    //Serial.print(F("\nprofCdpm"));
-    //Serial.println(profCdpm);
+    if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+      Serial.print(F("\nprofCdpm"));
+      Serial.println(profCdpm);
+    }  
   }
   if ((userCmdl[0] == 'S') || (userCmdl[0] == 's')) {
     // set desired temperatre degC
@@ -1752,8 +1765,10 @@ void userSvce() {
     profCdpm = 0;
   }
   if ((userCmdl[0] == 'Y') || (userCmdl[0] == 'y')) {
-    // set new PWM frequency 
-    //Serial.println("Pwm frequency control TBD");
+    if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+      // set new PWM frequency 
+      //Serial.println("Pwm frequency control TBD");
+    }  
   }
   if ((userCmdl[0] == 'Z') || (userCmdl[0] == 'z')) {
     // Zero 'Total Time' 
@@ -1761,7 +1776,9 @@ void userSvce() {
   }
   // For debug to see if Artisan is setting Unit C/F 
   if ((userCmdl[0] == '?')) {
-    // Serial.println(userScal);
+    if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+      Serial.println(userScal);
+    }  
   }
   userRctl &= ~RCTL_ATTN;
 }
