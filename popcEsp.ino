@@ -58,7 +58,7 @@
 //  Code section compiler switches - Rebuild and Upload after changing these 
 #define PROC_ESP      1                  // Compile for ESP8266
 #define PROC_UNO      0                  // Compile for Arduino Uno
-#define IFAC_ARTI     0                  // Start with Artisan interface on Serial
+#define IFAC_ARTI     1                  // Start with Artisan interface on Serial
 #define IFAC_FRNT     0                  // Obsolete Front/Process interface on Serial 
 #define WITH_LCD      0                  // Hdwre has I2C 2x16 LCD display
 #define WITH_MAX31855 0                  // Hdwre has thermocouple + circuit
@@ -124,17 +124,6 @@ const char versChrs[] = "popc Vers 2017Ap11";
 
 /// Declarations by unit
 
-//wip
-//union bbrd32 {
-//typedef union lcdsBbrd {
-  //struct{
-    //char[16] Hlf0;
-    //char[16] Hlf1;
-  //};  
-  //char[32] Full;
-//}
-//bbrd32 newShow;
-
 // Used for Artisan: ambient, ch1, ch2, ch3, ch4 or Logging Tt Ts BT ET on serial 
 char artiResp[] = "023.0,128.8,138.8,000.0,000.0  ";
 
@@ -194,7 +183,7 @@ const char psecTops[]  = "/popc/stepSecs";
 const char pcntTops[]  = "/popc/pwmd/perCent";
 const char ptmpTops[]  = "/popc/profDegs";
 const char c500Tops[]  = "/popc/cbck5000";
-const char echoTops[]  = "/popc/cmdlEcho";
+const char echoTops[]  = "/popc/echoCmdl";
 
 #if PROC_ESP
 #include <MQTT.h>
@@ -202,6 +191,7 @@ const char echoTops[]  = "/popc/cmdlEcho";
 
 // create MQTT object with IP address, port of MQTT broker e.g.mosquitto application
 // MQTT myMqtt(MQCL_ID, "MQTTServerName", MQTTServerPort);
+//
 MQTT popcMqtt(MQCL_ID, "test.mosquitto.org", 1883);
 #endif
 
@@ -302,8 +292,6 @@ void connCbck();
 TickerScheduler popcShed(3);
 
 // wifi Replace with your own network's SSID, Password
-//const char* ssid     = "ssid";
-//const char* password = "ssid_password";
 //
 const char* ssid     = "mySSID";
 //
@@ -485,8 +473,8 @@ void bbrdFill() {
   bbrdLin1[10]   = 'm';
   bbrdLin1[11]  = ' ';
   // 
-  if (( bbrdRctl && RCTL_INFO ) == RCTL_INFO) {
-    // Artisan 'Info' output is csv format  tot min:swc step min:sec BT ET Event
+  if ( !( bbrdRctl && RCTL_INFO )) {
+    // Artisan non -'Info' output is csv logging format: TotMin:Sec StepMin:sec BT ET Event
     dtostrf( (totlSecs / 60), 02, -0, &artiResp[0]);
     dtostrf( (totlSecs % 60), 02, -0, &artiResp[3]);
     dtostrf( (stepSecs / 60), 02, -0, &artiResp[6]);
@@ -512,7 +500,7 @@ void bbrdFill() {
     artiResp[25]  = ' ';
   } else {
     if ( bbrdRctl & RCTL_ARTI ) {
-      // Artisan Iface is active, prepare 'READ' temperature response
+      // If Artisan Iface is active, prepare 'READ' temperature response
       if ( userScal == fahrScal) {
         dtostrf( floatCtoF(ambiTmpC),       5, 1, &artiResp[0]  );
         dtostrf( floatCtoF(sensTmpC + 10 ), 5, 1, &artiResp[6]  );
@@ -1560,6 +1548,9 @@ void virtTcplLoop() {
     } else {
       heatInpu = pwmdOutp;
     }
+#if 0 
+  // Ap10 R20 on popc: virtTcpl showed 236C at real FC 10.7 mins,  260 @ 13.4 mins 
+  // Arti shows Avge 195C at W70 
     pwmdMavg = int( 0.2 * heatInpu    \
                  +  0.8 * heatHist[0] \
                  +  2.0 * heatHist[1] \
@@ -1567,6 +1558,16 @@ void virtTcplLoop() {
                  +  2.0 * heatHist[3] ) ; 
     sensTmpC = sensTmpC + float(pwmdMavg) / 255.0 \
                  -  (sensTmpC - ambiTmpC) / 32.0;
+#endif                  
+// Want 195/236 power with slower decay 
+    pwmdMavg = int( 0.1 * heatInpu    \
+                 +  0.2 * heatHist[0] \
+                 +  1.0 * heatHist[1] \
+                 +  1.6 * heatHist[2] \
+                 +  1.2 * heatHist[3] ) ; 
+    sensTmpC = sensTmpC + float(pwmdMavg) / 255.0 \
+                 -  (sensTmpC - ambiTmpC) / 72.0;
+//                 
     heatHist[3] = heatHist[2] / 4; 
     heatHist[2] = heatHist[1]; 
     heatHist[1] = heatHist[0]; 
@@ -1680,16 +1681,20 @@ void userSvce() {
     // Toggle Artisan Interface
     if ( bbrdRctl & RCTL_ARTI ) {
       bbrdRctl &= ~RCTL_ARTI; 
+      Serial.println("# Serial  Interface is Active");
     } else {
-      bbrdRctl |=  RCTL_ARTI; 
+      bbrdRctl |=  RCTL_ARTI;
+      Serial.println("# Artisan Interface is Active");
     }
   }
   if ((userCmdl[0] == 'D') || (userCmdl[0] == 'd')) {
     // Toggle Diagnostic Flag
     if ( bbrdRctl & RCTL_DIAG ) {
+      Serial.println("# Diagnostics Mode  is   Active");
       bbrdRctl &= ~RCTL_DIAG; 
     } else {
       bbrdRctl |=  RCTL_DIAG; 
+      Serial.println("# Diagnostics Mode  is InActive");
     }
   }
   if (((userCmdl[0] == 'C') || (userCmdl[0] == 'c')) && (userCmdl[1] != 'H')) {
