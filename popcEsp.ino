@@ -29,7 +29,7 @@
 //  prof  Profile control; selects auto/manual temp setpt, manual pwm width, real/fake temp sensor
 //  rots  Rotary 16way encoded ( 4pin + common) selector switch manager
 //  tcpl  MAX31855 SPI thermocouple temperature sensor or virtual temp readings for debug
-//  user  receive user's commands via serial port, MQTT for setpoint, ramp, profile modes 
+//  user  receive user's or Artisan commands via serial port, MQTT for setpoint, ramp, profiles 
 //    
 //  Arduino H/W details:  
 //
@@ -191,9 +191,15 @@ const char echoTops[]  = "/popc/echoCmdl";
 
 // create MQTT object with IP address, port of MQTT broker e.g.mosquitto application
 // MQTT myMqtt(MQCL_ID, "MQTTServerName", MQTTServerPort);
-//MQTT popcMqtt(MQCL_ID, "test.mosquitto.org", 1883);
 //
-MQTT popcMqtt(MQCL_ID, "172.20.224.111", 5983);
+MQTT popcMqtt(MQCL_ID, "test.mosquitto.org", 1883);
+//
+// wifi Replace with your own network's SSID, Password
+//
+const char* ssid     = "mySSID";
+//
+const char* password = "myNetworkPasswd";
+
 #endif
 
 //pidc
@@ -240,7 +246,9 @@ byte pwmdPcnt;                               // Percent duty cycle
 #define RCTL_ARTI 0x02
 #define RCTL_INFO 0x01
 
-#if IFAC_ARTI
+#if PROC_ESP
+byte  bbrdRctl  = RCTL_RUNS | RCTL_INFO | RCTL_DIAG;  // See wifi connection 
+#elif IFAC_ARTI
 byte  bbrdRctl  = RCTL_RUNS | RCTL_ARTI;
 #else
 byte  bbrdRctl  = RCTL_RUNS | RCTL_INFO;
@@ -291,14 +299,6 @@ void connCbck();
 
 #include "TickerScheduler.h"
 TickerScheduler popcShed(3);
-
-// wifi Replace with your own network's SSID, Password
-//const char* ssid     = "mySSID";
-//const char* password = "mySSIDPassword";
-//
-const char* ssid     = "inactive";
-//
-const char* password = "pickledcrab1102190";
 
 // End paste from pubsShed 
 //
@@ -1319,9 +1319,9 @@ void profLoop() {
 //TCCR2B = TCCR2B & B11111000 | B00000110     tmr 2 divisor:   256 for PWM freq   122.55 Hz
 //TCCR2B = TCCR2B & B11111000 | B00000111     tmr 2 divisor:  1024 for PWM freq    30.64 Hz
 //
-void pwmdExpo( byte tensMaxe) {
+void pwmdExpo( byte dtwoExpo) {
 #if PROC_UNO
-  switch (tensMaxe) {
+  switch (dtwoExpo) {
     case   0:
       // Pscl:    1 Freq: 31372.55Hz
       TCCR1B = TCCR1B & B11111000 | B00000001;
@@ -1340,7 +1340,7 @@ void pwmdExpo( byte tensMaxe) {
     break;
     default:
       // Pscl:   64 Freq:   490.20Hz
-      TCCR1B = TCCR1B & B11111000 | B00000101;
+      TCCR1B = TCCR1B & B11111000 | B00000011;
     break;
   }  
 #endif  
@@ -1697,11 +1697,11 @@ void userSvce() {
   if ((userCmdl[0] == 'D') || (userCmdl[0] == 'd')) {
     // Toggle Diagnostic Flag
     if ( bbrdRctl & RCTL_DIAG ) {
-      Serial.println("# Diagnostics Mode  is   Active");
+      Serial.println("# Diagnostics Mode  is InActive");
       bbrdRctl &= ~RCTL_DIAG; 
     } else {
       bbrdRctl |=  RCTL_DIAG; 
-      Serial.println("# Diagnostics Mode  is InActive");
+      Serial.println("# Diagnostics Mode  is   Active");
     }
   }
   if (((userCmdl[0] == 'C') || (userCmdl[0] == 'c')) && (userCmdl[1] != 'H')) {
