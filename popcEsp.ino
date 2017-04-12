@@ -1,5 +1,5 @@
 /// popcEsp popc port to esp with MQTT, tickScheduler, is MQTT client popc
-//  Ap
+//  Ap12 Fast 30Hz PWM OK on Uno
 //  Ap11 Artisan Interface and Logging as run time option
 //  Ap09 Arti branch UNO+ESP both connect OK to Artisan, all Serial output switched 
 //  Ap02 Bigger delay in virtTcpl, better everage in ROC est; Builds ESP, UNO  
@@ -56,13 +56,13 @@
 //
 
 //  Code section compiler switches - Rebuild and Upload after changing these 
-#define PROC_ESP      1                  // Compile for ESP8266
-#define PROC_UNO      0                  // Compile for Arduino Uno
-#define IFAC_ARTI     1                  // Start with Artisan interface on Serial
+#define PROC_ESP      0                  // Compile for ESP8266
+#define PROC_UNO      1                  // Compile for Arduino Uno
+#define IFAC_ARTI     0                  // Start with Artisan interface on Serial
 #define IFAC_FRNT     0                  // Obsolete Front/Process interface on Serial 
 #define WITH_LCD      0                  // Hdwre has I2C 2x16 LCD display
 #define WITH_MAX31855 0                  // Hdwre has thermocouple + circuit
-#define WITH_OFFN     1                  // Use ~4sec Off-On SSR, not fast PWM
+#define WITH_OFFN     0                  // Use ~4sec Off-On SSR, not fast PWM
  
 #if 0
 // milliSecond poll values
@@ -120,7 +120,7 @@ __asm volatile ("nop");
 #include <dummy.h>
 #endif
 
-const char versChrs[] = "popc Vers 2017Ap11";
+const char versChrs[] = "popc Vers 17Ap12 Fast PWM";
 
 /// Declarations by unit
 
@@ -191,8 +191,9 @@ const char echoTops[]  = "/popc/echoCmdl";
 
 // create MQTT object with IP address, port of MQTT broker e.g.mosquitto application
 // MQTT myMqtt(MQCL_ID, "MQTTServerName", MQTTServerPort);
+//MQTT popcMqtt(MQCL_ID, "test.mosquitto.org", 1883);
 //
-MQTT popcMqtt(MQCL_ID, "test.mosquitto.org", 1883);
+MQTT popcMqtt(MQCL_ID, "172.20.224.111", 5983);
 #endif
 
 //pidc
@@ -253,13 +254,13 @@ byte  lcdstRctl = 0x00;
 byte  pidcRctl  = (RCTL_RUNS | RCTL_AUTO );
 byte  pwmdRctl  = (RCTL_RUNS | RCTL_AUTO);
 #if WITH_OFFN
-byte  offnRctl  = RCTL_RUNS;
+byte  offnRctl  = (RCTL_RUNS | RCTL_AUTO);
 #else
-byte  offnRctl  = 0x00;
+byte  offnRctl  = RCTL_RUNS;
 #endif
 byte  profRctl  = RCTL_RUNS;
 byte  rotsRctl  = RCTL_RUNS;
-byte  tcplRctl  = (RCTL_RUNS);
+byte  tcplRctl  = RCTL_RUNS;
 byte  userRctl  = RCTL_RUNS;
 byte  wifiRctl  = RCTL_RUNS;
 
@@ -292,10 +293,12 @@ void connCbck();
 TickerScheduler popcShed(3);
 
 // wifi Replace with your own network's SSID, Password
+//const char* ssid     = "mySSID";
+//const char* password = "mySSIDPassword";
 //
-const char* ssid     = "mySSID";
+const char* ssid     = "inactive";
 //
-const char* password = "mySSIDPassword";
+const char* password = "pickledcrab1102190";
 
 // End paste from pubsShed 
 //
@@ -306,7 +309,7 @@ const char* password = "mySSIDPassword";
 #if PROC_ESP
 // Off/On SSR driver 
 #define OFFN_OPIN  5
-//
+// Handle either LED polarity with: (1 & ~LED_LOWON) for light, (0 | LED_LOWOFF) for dark 
 #define LED_ONBRD  0
 #define LED_LOWON  1
 #endif
@@ -954,12 +957,10 @@ void offnLoop() {
     offnTogo = OFFN_POLL_MSEC ;
     //
     if (!( offnRctl & RCTL_RUNS )) {
-      if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) { 
-        Serial.println("offnlLoop NoRuns");
-      }  
       return; 
     } else {
-      if (offnCntr == 100 ) {
+      // RCTL_RUNS runs Off/On Loop for LED indicator, RCTL_AUTO drives output pin
+      if (offnCntr >= 100 ) {
         offnCntr = 0;
       } else {
         offnCntr += 1;
@@ -970,14 +971,14 @@ void offnLoop() {
           offnOutp = 0;
           offnRctl &= ~RCTL_ATTN;
           digitalWrite( LED_ONBRD, (0 | LED_LOWON));
-          digitalWrite( OFFN_OPIN,   0);
+          if ( offnRctl & RCTL_AUTO) digitalWrite( OFFN_OPIN,   0);
         break; 
         case 100: 
           //Serial.println("offnlLoop Case 100 ");
           offnOutp = 1;
           offnRctl |=  RCTL_ATTN;
           digitalWrite( LED_ONBRD, (1 & ~LED_LOWON));
-          digitalWrite( OFFN_OPIN,   1);
+          if ( offnRctl & RCTL_AUTO) digitalWrite( OFFN_OPIN,   1);
         break; 
         default: 
           if (offnCntr > pwmdPcnt ) {
@@ -990,7 +991,7 @@ void offnLoop() {
             offnOutp = 0;
             offnRctl &= ~RCTL_ATTN;
             digitalWrite( LED_ONBRD, (0 | LED_LOWON));
-            digitalWrite( OFFN_OPIN,   0);
+            if ( offnRctl & RCTL_AUTO) digitalWrite( OFFN_OPIN,   0);
           } else {
             //Serial.print("offnlLoop Case dflt is Off Cntr:");
             //Serial.print(offnCntr);
@@ -1001,9 +1002,13 @@ void offnLoop() {
             offnOutp = 1;
             offnRctl |=  RCTL_ATTN;
             digitalWrite( LED_ONBRD, (1 & ~LED_LOWON));
-            digitalWrite( OFFN_OPIN,   1);
+            if ( offnRctl & RCTL_AUTO) digitalWrite( OFFN_OPIN,   1);
         }
         break;  
+      }
+      // flicker tell tale LED in case of fast PWM
+      if ( (!(offnRctl & RCTL_AUTO)) && !(offnCntr % 4)) {
+        digitalWrite( LED_ONBRD, (0 | LED_LOWON));
       }
     }    
   }
@@ -1386,10 +1391,10 @@ void pwmdLoop() {
       //Serial.println(pwmdTarg);
       pwmdOutp = byte(pwmdTarg);
       pwmdPcnt = byte (100.0 * pwmdOutp / 255);
-      if ( 0 ) {
+      if ( !(offnRctl & RCTL_AUTO)) {
+        // Off/On not RCTL_AUTO means use fast analog PWM
         analogWrite( PWMD_OPIN, pwmdOutp);
-      } else {
-      }
+      } 
     }  
   }  
 }
@@ -1442,8 +1447,10 @@ void rotsLoop() {
       if ( rotsCurr != rotsNewb) {
         // steady value changed from previous
         rotsCurr = rotsNewb;
-        //Serial.print("Rots:");
-        //Serial.print(rotsCurr);
+        if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+          Serial.print("Rots:");
+          Serial.print(rotsCurr);
+        }  
         // manage rotary switch settings
         switch( rotsCurr) {
           case 0:
@@ -1539,7 +1546,7 @@ void virtTcplLoop() {
     vtcpPrev = millis();
     vtcpTogo = VTCP_POLL_MSEC;
     // virt tcpl 
-    if ( offnRctl & RCTL_RUNS) {
+    if ( offnRctl & RCTL_AUTO) {
       if (offnRctl & RCTL_ATTN ) {
         heatInpu = 255;
       } else {
@@ -1708,8 +1715,13 @@ void userSvce() {
     bbrdRctl |= RCTL_INFO; 
   }
   if ((userCmdl[0] == 'L') || (userCmdl[0] == 'l')) {
-    // Switch On  Artisan csv Logging, stop  popc 'Info' on Serial 
-    bbrdRctl &= ~RCTL_INFO; 
+    // Toggle logging 
+    if ( bbrdRctl & RCTL_INFO ) {
+      // Switch On  Artisan csv Logging, stop  popc 'Info' on Serial 
+      bbrdRctl &= ~RCTL_INFO; 
+    } else {
+      bbrdRctl |= RCTL_INFO; 
+    }  
   }
   if ((userCmdl[0] == 'P') || (userCmdl[0] == 'P')) {
     // TBD select stored profile
