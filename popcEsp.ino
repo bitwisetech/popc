@@ -60,8 +60,8 @@
 #define PROC_UNO      1                  // Compile for Arduino Uno
 #define IFAC_ARTI     0                  // Start with Artisan interface on Serial
 #define IFAC_FRNT     0                  // Obsolete Front/Process interface on Serial 
-#define WITH_LCD      0                  // Hdwre has I2C 2x16 LCD display
-#define WITH_MAX31855 0                  // Hdwre has thermocouple + circuit
+#define WITH_LCD      1                  // Hdwre has I2C 2x16 LCD display
+#define WITH_MAX31855 1                  // Hdwre has thermocouple + circuit
 #define WITH_OFFN     0                  // Use ~4sec Off-On SSR, not fast PWM
  
 #if 0
@@ -120,7 +120,7 @@ __asm volatile ("nop");
 #include <dummy.h>
 #endif
 
-const char versChrs[] = "popc Vers 17Ap12 Fast PWM";
+const char versChrs[] = "popc Vers 17Ap13 Rates";
 
 /// Declarations by unit
 
@@ -476,7 +476,7 @@ void bbrdFill() {
   bbrdLin1[10]   = 'm';
   bbrdLin1[11]  = ' ';
   // 
-  if ( !( bbrdRctl && RCTL_INFO )) {
+  if ( !( bbrdRctl & RCTL_INFO )) {
     // Artisan non -'Info' output is csv logging format: TotMin:Sec StepMin:sec BT ET Event
     dtostrf( (totlSecs / 60), 02, -0, &artiResp[0]);
     dtostrf( (totlSecs % 60), 02, -0, &artiResp[3]);
@@ -1479,39 +1479,39 @@ void rotsLoop() {
           break;
           case 6:
             profStep = 6;
-            userCmdl = "R25";
+            userCmdl = "R30";
           break;
           case 7:
             profStep = 7;
-            userCmdl = "R30";
-
+            userCmdl = "R45";
+          break;
           case 8:
             profStep = 8;
             userCmdl = "R60";
           break;
           case 9:
             profStep = 9;
-            userCmdl = "W20";
+            userCmdl = "R90";
           break;
           case 10:
             profStep = 10;
-            userCmdl = "W50";
+            userCmdl = "W10";
           break;
           case 11:
             profStep = 11;
-            userCmdl = "W60";
+            userCmdl = "W20";
           break;
           case 12:
             profStep = 12;
-            userCmdl = "W80";
+            userCmdl = "W50";
           break;
           case 13:
             profStep = 13;
-            userCmdl = "W90";
+            userCmdl = "W75";
           break;
           case 14:
             profStep = 14;
-            userCmdl = "W95";
+            userCmdl = "W90";
           break;
           case 15:
             profStep = 15;
