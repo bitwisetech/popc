@@ -60,8 +60,8 @@
 #define PROC_UNO      1                  // Compile for Arduino Uno
 #define IFAC_ARTI     0                  // Start with Artisan interface on Serial
 #define IFAC_FRNT     0                  // Obsolete Front/Process interface on Serial 
-#define WITH_LCD      1                  // Hdwre has I2C 2x16 LCD display
-#define WITH_MAX31855 1                  // Hdwre has thermocouple + circuit
+#define WITH_LCD      0                  // Hdwre has I2C 2x16 LCD display
+#define WITH_MAX31855 0                  // Hdwre has thermocouple + circuit
 #define WITH_OFFN     0                  // Use ~4sec Off-On SSR, not fast PWM
  
 #if 0
