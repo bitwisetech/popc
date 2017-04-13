@@ -536,7 +536,7 @@ void bbrdLoop() {
 void frntRecv() {
   // read the bytes sent from Processing
   int index=0;
-  while(Serial.available()&&index<26)
+  while( (Serial.available()) && (index<26))
   {
     if(index==0) {
       Auto_Man = Serial.read();
@@ -554,7 +554,7 @@ void frntRecv() {
   
   // if the information we got was in the correct format, 
   // read it into the system
-  if(index==26  && (Auto_Man==0 || Auto_Man==1)&& (Direct_Reverse==0 || Direct_Reverse==1))
+  if( (index==26)  && (Auto_Man==0 || Auto_Man==1)&& (Direct_Reverse==0 || Direct_Reverse==1))
   {
     targTmpC=float(frntComm.asFloat[0]);
     //sensTmpC=double(frntComm.asFloat[1]); // * the user has the ability to send the 
