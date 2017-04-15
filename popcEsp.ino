@@ -1,4 +1,4 @@
-/// popcEsp popc port to esp with MQTT, tickScheduler, is MQTT client popc
+/// roboPopc Arduino UNO / ESP8266 Controller / Artisan Logger with MQTT client 'popc'
 //  Ap12 Fast 30Hz PWM OK on Uno
 //  Ap11 Artisan Interface and Logging as run time option
 //  Ap09 Arti branch UNO+ESP both connect OK to Artisan, all Serial output switched 
