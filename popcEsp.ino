@@ -195,14 +195,14 @@ const char echoTops[]  = "/popc/echoCmdl";
 
 // create MQTT object with IP address, port of MQTT broker e.g.mosquitto application
 // MQTT myMqtt(MQCL_ID, "MQTTServerName", MQTTServerPort);
-//MQTT popcMqtt(MQCL_ID, "test.mosquitto.org", 1883);
-MQTT popcMqtt(MQCL_ID, "172.20.224.111", 5983);
+//
+MQTT popcMqtt(MQCL_ID, "test.mosquitto.org", 1883);
 //
 // wifi Replace with your own network's SSID, Password
 //
-const char* ssid     = "inactive";
+const char* ssid     = "mySSID";
 //
-const char* password = "pickledcrab1102190";
+const char* password = "myNetPassword";
 
 #endif
 
