@@ -60,8 +60,8 @@
 #define PROC_UNO      1                  // Compile for Arduino Uno
 #define IFAC_ARTI     0                  // Start with Artisan interface on Serial
 #define IFAC_FRNT     0                  // Obsolete Front/Process interface on Serial 
-#define WITH_LCD      0                  // Hdwre has I2C 2x16 LCD display
-#define WITH_MAX31855 0                  // Hdwre has thermocouple + circuit
+#define WITH_LCD      1                  // Hdwre has I2C 2x16 LCD display
+#define WITH_MAX31855 1                  // Hdwre has thermocouple + circuit
 #define WITH_OFFN     0                  // Use ~4sec Off-On SSR, not fast PWM
  
 #if 0
@@ -120,7 +120,7 @@ __asm volatile ("nop");
 #include <dummy.h>
 #endif
 
-const char versChrs[] = "popc Vers 17Ap13 Rates";
+const char versChrs[] = "V 2017Ap15 PID Tweaked";
 
 /// Declarations by unit
 
@@ -138,6 +138,10 @@ char *dbugLine = " <==>                                                         
 char centScal  = 'C';
 char fahrScal  = 'F';
 char userScal  = 'C';
+
+// Theese two lines must contain tab chars, not spaces
+const char csvlLin1[] = "Date:	Unit:C	CHARGE:	TP:	DRYe:	FCs:	FCe:	SCs:	SCe:	DROP:	COOL:	Time:";
+const char csvlLin2[] = "Time1	Time2	BT	ET	Event";
 
 String userCmdl("exactly thirty one chars length");  // Crashable ! 
 
@@ -191,14 +195,14 @@ const char echoTops[]  = "/popc/echoCmdl";
 
 // create MQTT object with IP address, port of MQTT broker e.g.mosquitto application
 // MQTT myMqtt(MQCL_ID, "MQTTServerName", MQTTServerPort);
-//
-MQTT popcMqtt(MQCL_ID, "test.mosquitto.org", 1883);
+//MQTT popcMqtt(MQCL_ID, "test.mosquitto.org", 1883);
+MQTT popcMqtt(MQCL_ID, "172.20.224.111", 5983);
 //
 // wifi Replace with your own network's SSID, Password
 //
-const char* ssid     = "mySSID";
+const char* ssid     = "inactive";
 //
-const char* password = "myNetworkPasswd";
+const char* password = "pickledcrab1102190";
 
 #endif
 
@@ -209,10 +213,17 @@ float pidcKp      =   6.000;              // P-Term gain
 float pidcTi      =   4.000;              // I-Term Gain sec ( Ti++ = Gain--)
 float pidcTd      =   0.050;              // D-Term Gain sec ( Td++ = Gain++)
 #else
+//Ap15
 // Fast response PID to match approx 30Hz PWM frequency 
-float pidcKp      =   4.000;              // P-Term gain
-float pidcTi      =   2.000;              // I-Term Gain sec ( Ti++ = Gain--)
-float pidcTd      =   0.010;              // D-Term Gain sec ( Td++ = Gain++)
+//float pidcKp      =   8.000;              // P-Term gain
+//float pidcTi      =   8.000;              // I-Term Gain sec ( Ti++ = Gain--)
+//float pidcTd      =   0.002;              // D-Term Gain sec ( Td++ = Gain++)
+//float pidcKp      =   6.000;              // P-Term gain
+//float pidcTi      =  10.000;              // I-Term Gain sec ( Ti++ = Gain--)
+//float pidcTd      =   0.002;              // D-Term Gain sec ( Td++ = Gain++)
+float pidcKp      =  10.000;              // P-Term gain
+float pidcTi      =  12.000;              // I-Term Gain sec ( Ti++ = Gain--)
+float pidcTd      =   0.002;              // D-Term Gain sec ( Td++ = Gain++)
 #endif
 //
 float pidcRn      =  ambiTmpC;            // Refr setpoint
@@ -475,8 +486,9 @@ void bbrdFill() {
   bbrdLin1[8]   = '.';
   bbrdLin1[10]   = 'm';
   bbrdLin1[11]  = ' ';
-  // 
-  if ( !( bbrdRctl & RCTL_INFO )) {
+  // Select 1 sec  or N Sec CSV log entries
+  if ( !( bbrdRctl & RCTL_INFO ) && !(totlSecs % 2)) {
+  //if ( !( bbrdRctl & RCTL_INFO ) ) {
     // Artisan non -'Info' output is csv logging format: TotMin:Sec StepMin:sec BT ET Event
     dtostrf( (totlSecs / 60), 02, -0, &artiResp[0]);
     dtostrf( (totlSecs % 60), 02, -0, &artiResp[3]);
@@ -484,38 +496,48 @@ void bbrdFill() {
     dtostrf( (stepSecs % 60), 02, -0, &artiResp[9]);
     if ( userScal == fahrScal) {
       dtostrf( floatCtoF(sensTmpC),       5, 1, &artiResp[12] );
-      dtostrf( floatCtoF(sensTmpC + 10 ), 6, 2, &artiResp[19]  );
+      dtostrf( floatCtoF(targTmpC),       5, 1, &artiResp[19]  );
     } else {
-      dtostrf(           ambiTmpC,        5, 1, &artiResp[12]  );
-      dtostrf(           sensTmpC + 10,   5, 1, &artiResp[19]  );
+      dtostrf(           sensTmpC,        5, 1, &artiResp[12]  );
+      dtostrf(           targTmpC,        5, 1, &artiResp[19]  );
     }
     // insert leading zero into timestamps 
     if (artiResp[0] == ' ') artiResp[0] = '0'; 
     if (artiResp[3] == ' ') artiResp[3] = '0'; 
     if (artiResp[6] == ' ') artiResp[6] = '0'; 
     if (artiResp[9] == ' ') artiResp[9] = '0'; 
-    // fill fixed chars is response string
+    // fill fixed chars is response string, Artisan needs Tabs
     artiResp[2]  = ':';
-    artiResp[5]  = ' ';
+    artiResp[5]  =  0x09;
     artiResp[8]  = ':';
-    artiResp[11]  = ' ';
+    artiResp[11]  = 0x09;
+    artiResp[17]  = 0x09;   // overwrite <nul>
     artiResp[18]  = ' ';
+    artiResp[24]  = ' ';   // overwrite <nul>
     artiResp[25]  = ' ';
+    artiResp[26]  = ' ';
+    artiResp[27]  = ' ';
+    artiResp[28]  = ' ';
+    artiResp[29]  = ' ';
+    artiResp[30]  = ' ';
+    artiResp[31]  = ' ';
+    // Flag csv is ready for posting 
+    bbrdRctl |= RCTL_ATTN;
   } else {
     if ( bbrdRctl & RCTL_ARTI ) {
       // If Artisan Iface is active, prepare 'READ' temperature response
       if ( userScal == fahrScal) {
-        dtostrf( floatCtoF(ambiTmpC),       5, 1, &artiResp[0]  );
-        dtostrf( floatCtoF(sensTmpC + 10 ), 5, 1, &artiResp[6]  );
-        dtostrf( floatCtoF(sensTmpC),       5, 1, &artiResp[12] );
-        dtostrf( floatCtoF(ambiTmpC -  2 ), 5, 1, &artiResp[18] );
-        dtostrf( floatCtoF(ambiTmpC -  5 ), 5, 1, &artiResp[24] );
+        dtostrf( floatCtoF(ambiTmpC),      5, 1, &artiResp[0]  );
+        dtostrf( floatCtoF(targTmpC),      5, 1, &artiResp[6]  );
+        dtostrf( floatCtoF(sensTmpC),      5, 1, &artiResp[12] );
+        dtostrf( floatCtoF(ambiTmpC - 2 ), 5, 1, &artiResp[18] );
+        dtostrf( floatCtoF(ambiTmpC - 5 ), 5, 1, &artiResp[24] );
       } else {
-        dtostrf(           ambiTmpC,        5, 1, &artiResp[0]  );
-        dtostrf(           sensTmpC + 10,   5, 1, &artiResp[6]  );
-        dtostrf(           sensTmpC,        5, 1, &artiResp[12] );
-        dtostrf(           ambiTmpC -  2,   5, 1, &artiResp[18] );
-        dtostrf(           ambiTmpC -  5,   5, 1, &artiResp[24] );
+        dtostrf(           ambiTmpC,       5, 1, &artiResp[0]  );
+        dtostrf(           targTmpC,       5, 1, &artiResp[6]  );
+        dtostrf(           sensTmpC,       5, 1, &artiResp[12] );
+        dtostrf(           ambiTmpC - 2,   5, 1, &artiResp[18] );
+        dtostrf(           ambiTmpC - 5,   5, 1, &artiResp[24] );
       } 
       artiResp[5]  = ',';
       artiResp[11] = ',';
@@ -1286,11 +1308,14 @@ void profLoop() {
         //Serial.print("    ");
         // Front End
       } else {
-        // Send Artisan csv logging serial 
-        for ( tempIndx = 0; tempIndx < 31; tempIndx++ ) {
-          Serial.write(artiResp[tempIndx]);
+        // If new 3 Sec artiResp is flagged send Artisan csv logging serial 
+        if ( bbrdRctl & RCTL_ATTN) {
+          for ( tempIndx = 0; tempIndx < 31; tempIndx++ ) {
+            Serial.write(artiResp[tempIndx]);
+          }  
+          Serial.println(" ");
+          bbrdRctl &= ~RCTL_ATTN;
         }  
-        Serial.println(" ");
       }
     }    
   }
@@ -1479,39 +1504,39 @@ void rotsLoop() {
           break;
           case 6:
             profStep = 6;
-            userCmdl = "R30";
+            userCmdl = "R25";
           break;
           case 7:
             profStep = 7;
-            userCmdl = "R45";
+            userCmdl = "R30";
           break;
           case 8:
             profStep = 8;
-            userCmdl = "R60";
+            userCmdl = "R35";
           break;
           case 9:
             profStep = 9;
-            userCmdl = "R90";
+            userCmdl = "R40";
           break;
           case 10:
             profStep = 10;
-            userCmdl = "W10";
+            userCmdl = "R45";
           break;
           case 11:
             profStep = 11;
-            userCmdl = "W20";
+            userCmdl = "R60";
           break;
           case 12:
             profStep = 12;
-            userCmdl = "W50";
+            userCmdl = "R75";
           break;
           case 13:
             profStep = 13;
-            userCmdl = "W75";
+            userCmdl = "R90";
           break;
           case 14:
             profStep = 14;
-            userCmdl = "W90";
+            userCmdl = "R120";
           break;
           case 15:
             profStep = 15;
@@ -1717,8 +1742,12 @@ void userSvce() {
   if ((userCmdl[0] == 'L') || (userCmdl[0] == 'l')) {
     // Toggle logging 
     if ( bbrdRctl & RCTL_INFO ) {
-      // Switch On  Artisan csv Logging, stop  popc 'Info' on Serial 
+      // Artisan csv Logging: send two header lines with tab chars
+      Serial.println(csvlLin1); 
+      Serial.println(csvlLin2); 
+      // Switch On  Artisan csv Logging. TotalTime, StepTime must start at 0. 
       bbrdRctl &= ~RCTL_INFO; 
+      stepSecs = totlSecs = 0;
     } else {
       bbrdRctl |= RCTL_INFO; 
     }  
