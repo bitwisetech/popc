@@ -50,7 +50,7 @@
 //  p  profile (tbd)
 //  r  ramp C/F Degrees per minute, enter before target setpoint
 //  s  setPoint C/F temp 
-//  w  pwm width override, disssabled PID
+//  w  pwm width override, disable PID
 //  y  tbd pwm freq Hz 
 //  z  reset total timecount
 //
