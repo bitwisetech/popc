@@ -1,22 +1,4 @@
 /// roboPopc Arduino UNO / ESP8266 Controller / Artisan Logger with MQTT client 'popc'
-//  Ap12 Fast 30Hz PWM OK on Uno
-//  Ap11 Artisan Interface and Logging as run time option
-//  Ap09 Arti branch UNO+ESP both connect OK to Artisan, all Serial output switched 
-//  Ap02 Bigger delay in virtTcpl, better everage in ROC est; Builds ESP, UNO  
-//  Ap01 Rot sw complete; Off/On SSR Driver synced with pwm driver; display format
-//  Mr31 Backport UNO with Lcds new format, Tcpl, start on RotSwitch ToDo: Hw pin alloc for ESP
-//  Mr16 Centigrade, Fahrenheit supported
-//  Mr15 cleanup loop timing, elapMSec was too big imm after init()
-//  Mr14 fix dsbld pwmdInit(), timing by millis() not micros()
-//  Mr12 publish P, I, D, E, terms, subscribe Beta, Gamma 
-//  Mr11 Do 1, 2, 5 sec tick callbacks only 
-//  Mr10 Remove 500mS delay in cbckDisc(),  const char strings for topics
-//  Mr01 Combine User serial command input with subs callback for user commands  
-//  Fe22 Add section descriptions, re-order     
-//  Fe20 redo callback to 500mS, 1sec, 2sec, 5sec and tune pidc
-//  Oc29-popcFEpid pid controller with lcd output, timed loops and simulated temp response
-//       lcd display has profile values output on second line  
-//       serial data format is compatible with 'Front End' graph display on PC 
 // 
 //  Sections (units) in this code, ordered alphabetically:
 //  bbrd  'billboard' posts info to either / both of 2x16 LCD display / Serial Port
@@ -53,6 +35,22 @@
 //  w  pwm width override, disable PID
 //  y  tbd pwm freq Hz 
 //  z  reset total timecount
+//
+//  Copyright (c) 2017 Bitwise Technologies  popc@bitwisetech.com  
+//
+//  This program is free software; you can redistribute it and/or                  
+//  modify it under the terms of the GNU General Public License as                 
+//  published by the Free Software Foundation; either version 2 of the             
+//  License, or (at your option) any later version.                                
+//
+//  This program is distributed in the hope that it will be useful, but            
+//  WITHOUT ANY WARRANTY; without even the implied warranty of                     
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU              
+//  General Public License for more details.                                       
+//
+//  You should have received a copy of the GNU General Public License              
+//  along with this program; if not, write to the Free Software                    
+// .Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA 
 //
 
 //  Code section compiler switches - Rebuild and Upload after changing these 
