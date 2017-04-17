@@ -54,13 +54,13 @@
 //
 
 //  Code section compiler switches - Rebuild and Upload after changing these 
-#define PROC_ESP      0                  // Compile for ESP8266
-#define PROC_UNO      1                  // Compile for Arduino Uno
+#define PROC_ESP      1                  // Compile for ESP8266
+#define PROC_UNO      0                  // Compile for Arduino Uno
+#define WITH_LCD      0                  // Hdwre has I2C 2x16 LCD display
+#define WITH_MAX31855 0                  // Hdwre has thermocouple + circuit
+#define WITH_OFFN     0                  // Use ~4sec Off-On SSR, not fast PWM
 #define IFAC_ARTI     0                  // Start with Artisan interface on Serial
 #define IFAC_FRNT     0                  // Obsolete Front/Process interface on Serial 
-#define WITH_LCD      1                  // Hdwre has I2C 2x16 LCD display
-#define WITH_MAX31855 1                  // Hdwre has thermocouple + circuit
-#define WITH_OFFN     0                  // Use ~4sec Off-On SSR, not fast PWM
  
 #if 0
 // milliSecond poll values
@@ -118,7 +118,7 @@ __asm volatile ("nop");
 #include <dummy.h>
 #endif
 
-const char versChrs[] = "V 2017Ap15 PID Tweaked";
+const char versChrs[] = "V 2017Ap17 PID-2 Vals";
 
 /// Declarations by unit
 
@@ -193,14 +193,19 @@ const char echoTops[]  = "/popc/echoCmdl";
 
 // create MQTT object with IP address, port of MQTT broker e.g.mosquitto application
 // MQTT myMqtt(MQCL_ID, "MQTTServerName", MQTTServerPort);
+//MQTT popcMqtt(MQCL_ID, "test.mosquitto.org", 1883);
 //
-MQTT popcMqtt(MQCL_ID, "test.mosquitto.org", 1883);
+MQTT popcMqtt(MQCL_ID, "172.20.224.111", 5983);
 //
 // wifi Replace with your own network's SSID, Password
+//const char* ssid     = "mySSID";
+//const char* password = "myNetPassword";
+//const char* ssid     = "hive";
+//const char* password = "pErE6%0^dDyR1*6$";
 //
-const char* ssid     = "mySSID";
+const char* ssid     = "inactive";
 //
-const char* password = "myNetPassword";
+const char* password = "pickledcrab1102190";
 
 #endif
 
@@ -213,15 +218,9 @@ float pidcTd      =   0.050;              // D-Term Gain sec ( Td++ = Gain++)
 #else
 //Ap15
 // Fast response PID to match approx 30Hz PWM frequency 
-//float pidcKp      =   8.000;              // P-Term gain
-//float pidcTi      =   8.000;              // I-Term Gain sec ( Ti++ = Gain--)
-//float pidcTd      =   0.002;              // D-Term Gain sec ( Td++ = Gain++)
-//float pidcKp      =   6.000;              // P-Term gain
-//float pidcTi      =  10.000;              // I-Term Gain sec ( Ti++ = Gain--)
-//float pidcTd      =   0.002;              // D-Term Gain sec ( Td++ = Gain++)
-float pidcKp      =  10.000;              // P-Term gain
-float pidcTi      =  12.000;              // I-Term Gain sec ( Ti++ = Gain--)
-float pidcTd      =   0.002;              // D-Term Gain sec ( Td++ = Gain++)
+float pidcKp      =   2.000;              // P-Term gain
+float pidcTi      =   6.000;              // I-Term Gain sec ( Ti++ = Gain--)
+float pidcTd      =   0.040;              // D-Term Gain sec ( Td++ = Gain++)
 #endif
 //
 float pidcRn      =  ambiTmpC;            // Refr setpoint
@@ -241,7 +240,7 @@ float pidcUn = 0.0;                       // PID controller Output
 
 // pwmd vbls
 int  pwmdFreq, pwmdDuty, pwmdTarg, pwmdOutp; // Freq, Duty Cycle Target (255max) Output
-int  heatHist[] = { 0, 0, 0, 0};             // mavg store for virtTcpl 
+int  heatHist[] = { 0, 0, 0, 0, 0, 0, 0, 0}; // mavg store for virtTcpl 
 int  cdpmHist[] = { 0, 0, 0, 0};             // mavg store for temp rate of change 
 byte pwmdPcnt;                               // Percent duty cycle 
 
@@ -696,7 +695,7 @@ if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
 
 void publCbck() {
   if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-    Serial.println("popc publCbck");
+    //Serial.println("popc publCbck");
   }  
 }
 
@@ -1588,7 +1587,7 @@ void virtTcplLoop() {
                  +  2.0 * heatHist[3] ) ; 
     sensTmpC = sensTmpC + float(pwmdMavg) / 255.0 \
                  -  (sensTmpC - ambiTmpC) / 32.0;
-#endif                  
+//  #endif Ap16 try to get bumpy temp response 
 // Want 195/236 power with slower decay 
     pwmdMavg = int( 0.1 * heatInpu    \
                  +  0.2 * heatHist[0] \
@@ -1599,6 +1598,29 @@ void virtTcplLoop() {
                  -  (sensTmpC - ambiTmpC) / 72.0;
 //                 
     heatHist[3] = heatHist[2] / 4; 
+    heatHist[2] = heatHist[1]; 
+    heatHist[1] = heatHist[0]; 
+    heatHist[0] = heatInpu;
+  }  
+#endif
+// Ap16 
+    pwmdMavg = int( 0.1 * heatInpu    \
+                 +  0.2 * heatHist[0] \
+                 +  0.3 * heatHist[1] \
+                 +  0.4 * heatHist[2] \
+                 +  0.6 * heatHist[3] \
+                 +  0.8 * heatHist[4] \
+                 +  1.6 * heatHist[5] \
+                 +  2.4 * heatHist[6] \
+                 +  0.8 * heatHist[7] ) ; 
+    sensTmpC = sensTmpC + float(pwmdMavg) / 255.0 \
+                 -  (sensTmpC - ambiTmpC) / 72.0;
+//                 
+    heatHist[7] = heatHist[6]; 
+    heatHist[6] = heatHist[5]; 
+    heatHist[5] = heatHist[4]; 
+    heatHist[4] = heatHist[3]; 
+    heatHist[3] = heatHist[2]; 
     heatHist[2] = heatHist[1]; 
     heatHist[1] = heatHist[0]; 
     heatHist[0] = heatInpu;
