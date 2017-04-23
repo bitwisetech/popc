@@ -1,3 +1,4 @@
+
 /// roboPopc Arduino UNO / ESP8266 Controller / Artisan Logger with MQTT client 'popc'
 // 
 //  Sections (units) in this code, ordered alphabetically:
@@ -118,12 +119,12 @@ __asm volatile ("nop");
 #include <dummy.h>
 #endif
 
-const char versChrs[] = "V 2017Ap17 PID-2 Vals";
+const char versChrs[] = "V 2017Ap20 Extend csv logline";
 
 /// Declarations by unit
 
-// Used for Artisan: ambient, ch1, ch2, ch3, ch4 or Logging Tt Ts BT ET on serial 
-char artiResp[] = "023.0,128.8,138.8,000.0,000.0  ";
+// 40+ char Used for Artisan: ambient, ch1, ch2, ch3, ch4 or Logging Tt Ts BT ET SV Duty on serial 
+char artiResp[] = "023.0,128.8,138.8,000.0,000.0           ";
 
 // billboard  Legend Lower cases: computed/Measured Upper case: User/Setpoints 
 char bbrdLin0[] = "w100% r-123 128c"; 
@@ -139,7 +140,7 @@ char userScal  = 'C';
 
 // Theese two lines must contain tab chars, not spaces
 const char csvlLin1[] = "Date:	Unit:C	CHARGE:	TP:	DRYe:	FCs:	FCe:	SCs:	SCe:	DROP:	COOL:	Time:";
-const char csvlLin2[] = "Time1	Time2	BT	ET	Event";
+const char csvlLin2[] = "Time1	Time2	BT	ET	Event	SV	DUTY";
 
 String userCmdl("exactly thirty one chars length");  // Crashable ! 
 
@@ -218,16 +219,16 @@ float pidcTd      =   0.050;              // D-Term Gain sec ( Td++ = Gain++)
 #else
 //Ap15
 // Fast response PID to match approx 30Hz PWM frequency 
-float pidcKp      =   2.000;              // P-Term gain
-float pidcTi      =   6.000;              // I-Term Gain sec ( Ti++ = Gain--)
-float pidcTd      =   0.040;              // D-Term Gain sec ( Td++ = Gain++)
+float pidcKp      =   3.000;              // P-Term gain
+float pidcTi      =   8.000;              // I-Term Gain sec ( Ti++ = Gain--)
+float pidcTd      =   4.000;              // D-Term Gain sec ( Td++ = Gain++)
 #endif
 //
 float pidcRn      =  ambiTmpC;            // Refr setpoint
 float pidcYn      =  ambiTmpC;            // YInp input
 float pidcEn      =   0.000;              // YInp input
-float pidcBeta    =   1.000;              // P-term Refr vs YInp
-float pidcGamma   =   1.000;              // D-term Refr vs YInp
+float pidcBeta    =   0.600;              // P-term Refr vs YInp
+float pidcGamma   =   0.600;              // D-term Refr vs YInp
 float pidcAlpha   =   0.100;              // D-term Filter time
 float pidcUMax    = 255.000;              // Outp Max
 float pidcUMin    =   0.000;              // Outp Min
@@ -240,9 +241,10 @@ float pidcUn = 0.0;                       // PID controller Output
 
 // pwmd vbls
 int  pwmdFreq, pwmdDuty, pwmdTarg, pwmdOutp; // Freq, Duty Cycle Target (255max) Output
-int  heatHist[] = { 0, 0, 0, 0, 0, 0, 0, 0}; // mavg store for virtTcpl 
-int  cdpmHist[] = { 0, 0, 0, 0};             // mavg store for temp rate of change 
-byte pwmdPcnt;                               // Percent duty cycle 
+int  heatHist[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }; // mavg store for virtTcpl 
+int  cdpmHist[] = { 0, 0, 0, 0};          // mavg store for temp rate of change 
+byte pwmdPcnt;                            // Percent duty cycle 
 
 // Run Cntl vbls  Bit 0:Run 1:Ctrl 2:Auto 3:Info  Info: 4: 5:Virt 6:Dbug 7:bbrd 
 #define RCTL_RUNS 0x80
@@ -255,7 +257,8 @@ byte pwmdPcnt;                               // Percent duty cycle
 #define RCTL_INFO 0x01
 
 #if PROC_ESP
-byte  bbrdRctl  = RCTL_RUNS | RCTL_INFO | RCTL_DIAG;  // See wifi connection 
+//byte  bbrdRctl  = RCTL_RUNS | RCTL_INFO | RCTL_DIAG;  // See wifi connection 
+byte  bbrdRctl  = RCTL_RUNS | RCTL_INFO;  // Don't see wifi connection 
 #elif IFAC_ARTI
 byte  bbrdRctl  = RCTL_RUNS | RCTL_ARTI;
 #else
@@ -486,18 +489,21 @@ void bbrdFill() {
   // Select 1 sec  or N Sec CSV log entries
   if ( !( bbrdRctl & RCTL_INFO ) && !(totlSecs % 2)) {
   //if ( !( bbrdRctl & RCTL_INFO ) ) {
-    // Artisan non -'Info' output is csv logging format: TotMin:Sec StepMin:sec BT ET Event
+    // Artisan non -'Info' output is csv logging format: TotMin:Sec StepMin:sec BT ET Event SV Duty
     dtostrf( (totlSecs / 60), 02, -0, &artiResp[0]);
     dtostrf( (totlSecs % 60), 02, -0, &artiResp[3]);
     dtostrf( (stepSecs / 60), 02, -0, &artiResp[6]);
     dtostrf( (stepSecs % 60), 02, -0, &artiResp[9]);
     if ( userScal == fahrScal) {
       dtostrf( floatCtoF(sensTmpC),       5, 1, &artiResp[12] );
-      dtostrf( floatCtoF(targTmpC),       5, 1, &artiResp[19]  );
+      dtostrf( floatCtoF(targTmpC),       5, 1, &artiResp[18] );
+      dtostrf( floatCtoF(profTmpC),       5, 1, &artiResp[25] );
     } else {
-      dtostrf(           sensTmpC,        5, 1, &artiResp[12]  );
-      dtostrf(           targTmpC,        5, 1, &artiResp[19]  );
+      dtostrf(           sensTmpC,        5, 1, &artiResp[12] );
+      dtostrf(           targTmpC,        5, 1, &artiResp[18] );
+      dtostrf(           profTmpC,        5, 1, &artiResp[25] );
     }
+    dtostrf(             pwmdPcnt,        3, 0, &artiResp[31] );
     // insert leading zero into timestamps 
     if (artiResp[0] == ' ') artiResp[0] = '0'; 
     if (artiResp[3] == ' ') artiResp[3] = '0'; 
@@ -508,16 +514,16 @@ void bbrdFill() {
     artiResp[5]  =  0x09;
     artiResp[8]  = ':';
     artiResp[11]  = 0x09;
-    artiResp[17]  = 0x09;   // overwrite <nul>
-    artiResp[18]  = ' ';
-    artiResp[24]  = ' ';   // overwrite <nul>
-    artiResp[25]  = ' ';
-    artiResp[26]  = ' ';
-    artiResp[27]  = ' ';
-    artiResp[28]  = ' ';
-    artiResp[29]  = ' ';
-    artiResp[30]  = ' ';
-    artiResp[31]  = ' ';
+    artiResp[17]  = 0x09;
+    artiResp[23]  = 0x09;
+    artiResp[24]  = 0x09;
+    artiResp[30]  = 0x09;
+    artiResp[34]  = ' ';   // overwrite <nul>
+    artiResp[35]  = ' ';   // overwrite <nul>
+    artiResp[36]  = ' ';   // overwrite <nul>
+    artiResp[37]  = ' ';
+    artiResp[38]  = ' ';
+    artiResp[39]  = ' ';
     // Flag csv is ready for posting 
     bbrdRctl |= RCTL_ATTN;
   } else {
@@ -779,6 +785,7 @@ void cbck1000() {
   cb10Rctl |= RCTL_ATTN;
 }
 
+//
 void cb10Svce() {
   int rCode = 0;
   //
@@ -841,29 +848,45 @@ void cb20Svce() {
 }
 
 void cbck5000() {
+	if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+  	//Serial.println("cbck5000");
+	}	
   cb50Rctl |= RCTL_ATTN;
 }
 
 void cb50Svce() {
+	if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+  	Serial.println("cb50Svce");
+	}	
   int rCode = 0;
   dtostrf( millis(), 8, 3, mqttVals);
 #if PROC_ESP  
-  rCode += popcMqtt.publish( (const char * )c500Tops, (const char *)(mqttVals), 15 ); 
+  rCode += popcMqtt.publish( c500Tops, (const char *)(mqttVals), 15 ); 
 #endif  
   //
   dtostrf( pidcKp, 8, 3, mqttVals);
 #if PROC_ESP  
-  rCode += popcMqtt.publish( (const char * )KpTops,   (const char *)(mqttVals), 15 ); 
+  rCode += popcMqtt.publish( KpTops,   (const char *)(mqttVals), 15 ); 
 #endif  
   //
   dtostrf( pidcTi, 8, 3, mqttVals);
 #if PROC_ESP  
-  rCode += popcMqtt.publish( (const char * )TiTops,   (const char *)(mqttVals), 15 ); 
+  rCode += popcMqtt.publish( TiTops,   (const char *)(mqttVals), 15 ); 
 #endif  
   //
   dtostrf( pidcTd, 8, 3, mqttVals);
 #if PROC_ESP  
-  rCode += popcMqtt.publish( (const char * )TdTops,   (const char *)(mqttVals), 15 ); 
+  rCode += popcMqtt.publish( TdTops,   (const char *)(mqttVals), 15 ); 
+#endif  
+  //
+  dtostrf( pidcBeta, 8, 3, mqttVals);
+#if PROC_ESP  
+  rCode += popcMqtt.publish( BetaTops, (const char * )(mqttVals), 15 ); 
+#endif  
+  //
+  dtostrf( pidcBeta, 8, 3, mqttVals);
+#if PROC_ESP  
+  rCode += popcMqtt.publish( GammaTops, (const char * )(mqttVals), 15 ); 
 #endif  
   //
   if ( userScal == fahrScal) {
@@ -1232,8 +1255,9 @@ void profLoop() {
       // Ramp to setpt temp and hold, Unless Manual Ramp 
       if (profCdpm != 0)  {
         if (profTmpC >= profTbeg)  {
-          // Only stop ramp if non manual 
-          if ((sensTmpC >=  targTmpC) && (stepSecs > 10) && (userDgpm == 0)) {
+          // User Ramp forces max temp, use Setpt after ramp setting for stop temp 
+          //if ((sensTmpC >=  targTmpC) && (stepSecs > 10) && (userDgpm == 0)) {
+          if ((sensTmpC >=  targTmpC) && (stepSecs > 10) ) {
             profCdpm = 0;
             stepSecs = 0;
             bbrdTmde = bbrdHold;
@@ -1243,8 +1267,9 @@ void profLoop() {
                      + float (stepSecs) * float(profCdpm) / 60.0;
           }  
         } else {
-          // Only stop ramp if non manual 
-          if ((sensTmpC <= targTmpC) && (stepSecs > 10) && (userDgpm == 0)) {
+          // User Ramp forces min temp, use Setpt after ramp setting for stop temp 
+          //if ((sensTmpC <= targTmpC) && (stepSecs > 10) && (userDgpm == 0)) {
+          if ((sensTmpC <= targTmpC) && (stepSecs > 10)) {
             profCdpm = 0;
             stepSecs = 0;
             bbrdTmde = bbrdHold;
@@ -1307,7 +1332,7 @@ void profLoop() {
       } else {
         // If new 3 Sec artiResp is flagged send Artisan csv logging serial 
         if ( bbrdRctl & RCTL_ATTN) {
-          for ( tempIndx = 0; tempIndx < 31; tempIndx++ ) {
+          for ( tempIndx = 0; tempIndx < sizeof(artiResp) - 1; tempIndx++ ) {
             Serial.write(artiResp[tempIndx]);
           }  
           Serial.println(" ");
@@ -1493,51 +1518,51 @@ void rotsLoop() {
           break;
           case 4:
             profStep = 4;
-            userCmdl = "R15";
+            userCmdl = "R20";
           break;
           case 5:
             profStep = 5;
-            userCmdl = "R20";
+            userCmdl = "R30";
           break;
           case 6:
             profStep = 6;
-            userCmdl = "R25";
+            userCmdl = "R45";
           break;
           case 7:
             profStep = 7;
-            userCmdl = "R30";
+            userCmdl = "R60";
           break;
           case 8:
             profStep = 8;
-            userCmdl = "R35";
+            userCmdl = "R90";
           break;
           case 9:
             profStep = 9;
-            userCmdl = "R40";
+            userCmdl = "W100";
           break;
           case 10:
             profStep = 10;
-            userCmdl = "R45";
+            userCmdl = "R68";
           break;
           case 11:
             profStep = 11;
-            userCmdl = "R60";
+            userCmdl = "W46";
           break;
           case 12:
             profStep = 12;
-            userCmdl = "R75";
+            userCmdl = "W32";
           break;
           case 13:
             profStep = 13;
-            userCmdl = "R90";
+            userCmdl = "W22";
           break;
           case 14:
             profStep = 14;
-            userCmdl = "R120";
+            userCmdl = "w15";
           break;
           case 15:
             profStep = 15;
-            userCmdl = "W100";
+            userCmdl = "W10";
           break;
         }  
         userRctl |= RCTL_ATTN; 
@@ -1598,32 +1623,80 @@ void virtTcplLoop() {
                  -  (sensTmpC - ambiTmpC) / 72.0;
 //                 
     heatHist[3] = heatHist[2] / 4; 
-    heatHist[2] = heatHist[1]; 
+    heatHist[2] = heatHist[1]; topsTi
     heatHist[1] = heatHist[0]; 
     heatHist[0] = heatInpu;
   }  
 #endif
 // Ap16 
-    pwmdMavg = int( 0.1 * heatInpu    \
-                 +  0.2 * heatHist[0] \
-                 +  0.3 * heatHist[1] \
-                 +  0.4 * heatHist[2] \
-                 +  0.6 * heatHist[3] \
-                 +  0.8 * heatHist[4] \
-                 +  1.6 * heatHist[5] \
-                 +  2.4 * heatHist[6] \
-                 +  0.8 * heatHist[7] ) ; 
+    pwmdMavg = int( 0.00 * heatInpu     \
+                 +  0.00 * heatHist[0]  \
+                 +  0.00 * heatHist[1]  \
+                 +  0.00 * heatHist[2]  \
+                 +  0.00 * heatHist[3]  \
+                 +  0.00 * heatHist[4]  \ 
+                 +  0.00 * heatHist[5]  \
+                 +  0.00 * heatHist[6]  \
+                 +  0.00 * heatHist[7]  \
+                 +  0.00 * heatHist[8]  \
+                 +  0.00 * heatHist[9]  \
+                 +  0.00 * heatHist[10] \
+                 +  0.00 * heatHist[11] \
+                 +  0.00 * heatHist[12] \
+                 +  0.00 * heatHist[13] \
+                 +  0.00 * heatHist[14] \
+                 +  0.01 * heatHist[15] \
+                 +  0.00 * heatHist[16] \
+                 +  0.01 * heatHist[17] \
+                 +  0.00 * heatHist[18] \
+                 +  0.01 * heatHist[19] \
+                 +  0.01 * heatHist[20] \
+                 +  0.01 * heatHist[21] \
+                 +  0.02 * heatHist[22] \
+                 +  0.04 * heatHist[23] \
+                 +  0.10 * heatHist[24] \
+                 +  0.16 * heatHist[25] \
+                 +  0.48 * heatHist[26] \
+                 +  0.64 * heatHist[27] \
+                 +  0.40 * heatHist[28] \
+                 +  0.08 * heatHist[29] \
+                 +  0.02 * heatHist[30] \
+                 +  0.01 * heatHist[31] ); 
     sensTmpC = sensTmpC + float(pwmdMavg) / 255.0 \
                  -  (sensTmpC - ambiTmpC) / 72.0;
 //                 
-    heatHist[7] = heatHist[6]; 
-    heatHist[6] = heatHist[5]; 
-    heatHist[5] = heatHist[4]; 
-    heatHist[4] = heatHist[3]; 
-    heatHist[3] = heatHist[2]; 
-    heatHist[2] = heatHist[1]; 
-    heatHist[1] = heatHist[0]; 
-    heatHist[0] = heatInpu;
+    heatHist[31] = heatHist[30]; 
+    heatHist[30] = heatHist[29]; 
+    heatHist[29] = heatHist[28]; 
+    heatHist[28] = heatHist[27]; 
+    heatHist[27] = heatHist[26]; 
+    heatHist[26] = heatHist[25]; 
+    heatHist[25] = heatHist[24]; 
+    heatHist[24] = heatHist[23]; 
+    heatHist[23] = heatHist[22]; 
+    heatHist[22] = heatHist[21]; 
+    heatHist[21] = heatHist[20]; 
+    heatHist[20] = heatHist[19]; 
+    heatHist[19] = heatHist[18]; 
+    heatHist[18] = heatHist[17]; 
+    heatHist[17] = heatHist[16]; 
+    heatHist[16] = heatHist[15]; 
+    heatHist[15] = heatHist[14]; 
+    heatHist[14] = heatHist[13]; 
+    heatHist[13] = heatHist[12]; 
+    heatHist[12] = heatHist[11]; 
+    heatHist[11] = heatHist[10]; 
+    heatHist[10] = heatHist[9]; 
+    heatHist[9]  = heatHist[8]; 
+    heatHist[8]  = heatHist[7]; 
+    heatHist[7]  = heatHist[6]; 
+    heatHist[6]  = heatHist[5]; 
+    heatHist[5]  = heatHist[4]; 
+    heatHist[4]  = heatHist[3]; 
+    heatHist[3]  = heatHist[2]; 
+    heatHist[2]  = heatHist[1]; 
+    heatHist[1]  = heatHist[0]; 
+    heatHist[0]  = heatInpu;
   }  
 }    
 
@@ -1912,9 +1985,9 @@ void setup() {
   //      ts.add(0, 3000, sendData)
   // 
   int shedRcod;
-  shedRcod = popcShed.add( 1, 1000, cbck1000);
-  shedRcod = popcShed.add( 2, 2000, cbck2000);
-  shedRcod = popcShed.add( 3, 5000, cbck5000);
+  shedRcod = popcShed.add( 0, 1000, cbck1000);
+  shedRcod = popcShed.add( 1, 2000, cbck2000);
+  shedRcod = popcShed.add( 2, 5000, cbck5000);
 #else 
 #endif // PROC_ESP
 //
