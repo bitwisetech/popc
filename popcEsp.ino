@@ -119,7 +119,7 @@ __asm volatile ("nop");
 #include <dummy.h>
 #endif
 
-const char versChrs[] = "V 2017Ap20 Extend csv logline";
+const char versChrs[] = "Ap26 1.5 6.0 0.6 2.0 0.4 ";
 
 /// Declarations by unit
 
@@ -169,6 +169,13 @@ LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  // Set the LCD I
 // i-n-g-o MQTT 
 // mqtt strings are declared for both ESP8266 and UNO 
 char mqttVals[] =  "                ";                     // mqtt value string 15 char max
+// Artisan interface                                          'Read' Cmd; Send Ambient:Targ:Sens:Prof:Duty
+const char AmbiTops[]    = "/popc/arti/ATmp";
+const char Chn1Tops[]    = "/popc/arti/Chn1";
+const char Chn2Tops[]    = "/popc/arti/Chn2";
+const char Chn3Tops[]    = "/popc/arti/Chn3";
+const char Chn4Tops[]    = "/popc/arti/Chn4";
+// PID controller topics
 const char RnTops[]    = "/popc/pidc/Rn";
 const char YnTops[]    = "/popc/pidc/Yn";
 const char EnTops[]    = "/popc/pidc/En";
@@ -181,6 +188,8 @@ const char TdTops[]    = "/popc/pidc/Td";
 const char TiTops[]    = "/popc/pidc/Ti";
 const char BetaTops[]  = "/popc/pidc/Beta";
 const char GammaTops[] = "/popc/pidc/Gamma";
+const char spreTops[]  = "/popc/pidc/Spare";
+// General Info topics 
 const char userTops[]  = "/popc/userCmdl";
 const char psecTops[]  = "/popc/stepSecs";
 const char pcntTops[]  = "/popc/pwmd/perCent";
@@ -197,6 +206,9 @@ const char echoTops[]  = "/popc/echoCmdl";
 //MQTT popcMqtt(MQCL_ID, "test.mosquitto.org", 1883);
 //
 MQTT popcMqtt(MQCL_ID, "172.20.224.111", 5983);
+//MQTT popcMqtt(MQCL_ID, "172.20.224.107", 5983);
+//MQTT popcMqtt(MQCL_ID, "172.20.224.117", 5983);
+//MQTT popcMqtt(MQCL_ID, "192.168.122.1", 5983);
 //
 // wifi Replace with your own network's SSID, Password
 //const char* ssid     = "mySSID";
@@ -207,6 +219,8 @@ MQTT popcMqtt(MQCL_ID, "172.20.224.111", 5983);
 const char* ssid     = "inactive";
 //
 const char* password = "pickledcrab1102190";
+//const char* ssid     = "bitwComc";
+//const char* password = "tWiStEdTeA";
 
 #endif
 
@@ -219,17 +233,30 @@ float pidcTd      =   0.050;              // D-Term Gain sec ( Td++ = Gain++)
 #else
 //Ap15
 // Fast response PID to match approx 30Hz PWM frequency 
-float pidcKp      =   3.000;              // P-Term gain
-float pidcTi      =   8.000;              // I-Term Gain sec ( Ti++ = Gain--)
-float pidcTd      =   4.000;              // D-Term Gain sec ( Td++ = Gain++)
+//  Date  Kp      Ti      Td      Beta      Gamma 
+//  Ap15  4.000   2.000   0.010
+//        8.000   8.000   0.002
+//        6.000  10.000   0.002
+//       10.000  12.000   0.002       
+//  Ap22  3.000   8.000   4.000
+//  My01  1.500   6.000   0.600   2.000     0.400
+// My4-1  2.000   6.000   1.000   4.000     0.200
+// My4-2  1.000   4.000   1.000   2.000     0.400
+// My4-3  1.000   5.000   2.000   2.000     0.400
+// My4-4  0.800   4.000   2.000   2.000     0.400
+//
+float pidcKp      =   1.000;                      // P-Term gain
+float pidcTi      =   4.000;                   // I-Term Gain sec ( Ti++ = Gain--)
+float pidcTd      =   1.000;                  // D-Term Gain sec ( Td++ = Gain++)
 #endif
+//
+float pidcBeta    =   2.000;              // P-term Refr vs YInp
+float pidcGamma   =   0.400;              // D-term Refr vs YInp
+float pidcAlpha   =   0.100;              // D-term Filter time
 //
 float pidcRn      =  ambiTmpC;            // Refr setpoint
 float pidcYn      =  ambiTmpC;            // YInp input
 float pidcEn      =   0.000;              // YInp input
-float pidcBeta    =   0.600;              // P-term Refr vs YInp
-float pidcGamma   =   0.600;              // D-term Refr vs YInp
-float pidcAlpha   =   0.100;              // D-term Filter time
 float pidcUMax    = 255.000;              // Outp Max
 float pidcUMin    =   0.000;              // Outp Min
 float dUn, Edn, Epn, Epn1          = 0.0; // Calc error values
@@ -240,11 +267,11 @@ float pidcPc, pidcIc, pidcDc       = 0.0; // cumulative P-I-D components
 float pidcUn = 0.0;                       // PID controller Output
 
 // pwmd vbls
-int  pwmdFreq, pwmdDuty, pwmdTarg, pwmdOutp; // Freq, Duty Cycle Target (255max) Output
+int  pwmdFreq, pwmdDuty, pwmdTarg, pwmdOutp;                          // Freq, Duty Cycle Target (255max) Output
 int  heatHist[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }; // mavg store for virtTcpl 
-int  cdpmHist[] = { 0, 0, 0, 0};          // mavg store for temp rate of change 
-byte pwmdPcnt;                            // Percent duty cycle 
+int  cdpmHist[] = { 0, 0, 0, 0, 0, 0};                                // mavg store for temp rate of change 
+byte pwmdPcnt;                                                        // Percent duty cycle 
 
 // Run Cntl vbls  Bit 0:Run 1:Ctrl 2:Auto 3:Info  Info: 4: 5:Virt 6:Dbug 7:bbrd 
 #define RCTL_RUNS 0x80
@@ -257,8 +284,9 @@ byte pwmdPcnt;                            // Percent duty cycle
 #define RCTL_INFO 0x01
 
 #if PROC_ESP
-//byte  bbrdRctl  = RCTL_RUNS | RCTL_INFO | RCTL_DIAG;  // See wifi connection 
-byte  bbrdRctl  = RCTL_RUNS | RCTL_INFO;  // Don't see wifi connection 
+//
+byte  bbrdRctl  = RCTL_RUNS | RCTL_INFO | RCTL_DIAG;  // See wifi connection 
+//byte  bbrdRctl  = RCTL_RUNS | RCTL_INFO;  // Don't see wifi connection 
 #elif IFAC_ARTI
 byte  bbrdRctl  = RCTL_RUNS | RCTL_ARTI;
 #else
@@ -295,7 +323,7 @@ byte rotsCurr, rotsNewb, offnCntr, offnOutp;   // Current value, newb test for c
 
 //  time
 unsigned int  mSecOflo;
-unsigned long currMSec, elapMSec = 0UL;
+unsigned long currMSec, elapMSec, pidcElap = 0UL;
 unsigned long lcdsPrev, lcdsTogo, pidcPrev, pidcTogo, profPrev, profTogo = 0UL;  // mSec poll loop timer counters
 unsigned long pwmdPrev, pwmdTogo, rotsPrev, rotsTogo, tcplPrev, tcplTogo = 0UL;  // mSec poll loop timer counters
 unsigned long vtcpPrev, vtcpTogo, offnPrev, offnTogo                     = 0UL;  // mSec poll loop timer counters
@@ -413,6 +441,7 @@ unsigned long mSecPast( unsigned long mSecLast) {
 /// Billboard LCDisplay and Serial info Lines 
 //
 void bbrdFill() {
+  // billboard fill lcd sisplay 32 chars for lcd / mqtt / serial 
   // Billboard lines are filled for display on LCD and/or Serial with 'info' 
   // billboard line[0]; strf ops append null chars, fill single chars later 
   dtostrf( pwmdPcnt,                              3, 0, &bbrdLin0[1]);
@@ -487,8 +516,8 @@ void bbrdFill() {
   bbrdLin1[10]   = 'm';
   bbrdLin1[11]  = ' ';
   // Select 1 sec  or N Sec CSV log entries
-  if ( !( bbrdRctl & RCTL_INFO ) && !(totlSecs % 2)) {
-  //if ( !( bbrdRctl & RCTL_INFO ) ) {
+  //if ( !( bbrdRctl & RCTL_INFO ) && !(totlSecs % 2)) {
+  if ( !( bbrdRctl & RCTL_INFO ) ) {
     // Artisan non -'Info' output is csv logging format: TotMin:Sec StepMin:sec BT ET Event SV Duty
     dtostrf( (totlSecs / 60), 02, -0, &artiResp[0]);
     dtostrf( (totlSecs % 60), 02, -0, &artiResp[3]);
@@ -548,11 +577,6 @@ void bbrdFill() {
       artiResp[23] = ',';
     }  
   }  
-}
-
-void bbrdLoop() {
-  // billboard fill lcd sisplay 32 chars for lcd / mqtt / serial 
-  bbrdFill();
 }
 
 ///  Front Side Serial Interface to PC 'Processing' graphing app
@@ -829,6 +853,12 @@ void cb10Svce() {
   rCode += popcMqtt.publish( psecTops, (const char * )(mqttVals), 15 );
 #endif  
   //
+  //dtostrf( pidcElap, 8, 3, mqttVals);
+  dtostrf( (100*(Epn-Epn1)), 8, 3, mqttVals);
+#if PROC_ESP  
+  rCode += popcMqtt.publish( spreTops, (const char * )(mqttVals), 15 );
+#endif  
+  //
   //if ( rCode) {
     //Serial.print("cbck1000 bad      RC: ");
     //Serial.println(rCode);
@@ -843,6 +873,48 @@ void cbck2000() {
 
 void cb20Svce() {
   int rCode = 0;
+  // Artisan interface                                        'Read' Cmd; Send Ambient:Targ:Sens:Prof:Duty
+  if ( userScal == fahrScal) {
+    dtostrf( floatCtoF(ambiTmpC), 5, 1, mqttVals);
+  } else {
+    dtostrf(           ambiTmpC , 5, 1, mqttVals);
+	}		
+#if PROC_ESP  
+  rCode += popcMqtt.publish( (const char * )AmbiTops , (const char * )mqttVals, 15 ); 
+#endif  
+  //
+  if ( userScal == fahrScal) {
+    dtostrf( floatCtoF(targTmpC), 5, 1, mqttVals);
+  } else {
+    dtostrf(           targTmpC , 5, 1, mqttVals);
+	}		
+#if PROC_ESP  
+  rCode += popcMqtt.publish( (const char * )Chn1Tops , (const char * )mqttVals, 15 ); 
+#endif  
+  //
+  if ( userScal == fahrScal) {
+    dtostrf( floatCtoF(sensTmpC), 5, 1, mqttVals);
+  } else {
+    dtostrf(           sensTmpC , 5, 1, mqttVals);
+	}		
+#if PROC_ESP  
+  rCode += popcMqtt.publish( (const char * )Chn2Tops , (const char * )mqttVals, 15 ); 
+#endif  
+  //
+  if ( userScal == fahrScal) {
+    dtostrf( floatCtoF(profTmpC), 5, 1, mqttVals);
+  } else {
+    dtostrf(           profTmpC , 5, 1, mqttVals);
+	}		
+#if PROC_ESP  
+  rCode += popcMqtt.publish( (const char * )Chn3Tops , (const char * )mqttVals, 15 ); 
+#endif  
+  //
+  dtostrf(             pwmdPcnt , 5, 1, mqttVals);
+#if PROC_ESP  
+  rCode += popcMqtt.publish( (const char * )Chn4Tops , (const char * )mqttVals, 15 ); 
+#endif  
+  //
   //
   cb20Rctl &= ~RCTL_ATTN;
 }
@@ -884,7 +956,7 @@ void cb50Svce() {
   rCode += popcMqtt.publish( BetaTops, (const char * )(mqttVals), 15 ); 
 #endif  
   //
-  dtostrf( pidcBeta, 8, 3, mqttVals);
+  dtostrf( pidcGamma, 8, 3, mqttVals);
 #if PROC_ESP  
   rCode += popcMqtt.publish( GammaTops, (const char * )(mqttVals), 15 ); 
 #endif  
@@ -1107,12 +1179,13 @@ void pidcLoop() {
     //pidcPrev = currMSec;
     // Adjusting with elapMSec errors after init when 8secs elapse  time togo  
     //pidcTogo = 2 * PIDC_POLL_MSEC - elapMSec;
+    pidcElap = elapMSec;
     pidcPrev = millis();
     pidcTogo = PIDC_POLL_MSEC;
     //Serial.print("pidc ");
     //Serial.println( elapMSec);
     //
-    if ( pidcRctl & RCTL_RUNS  == 0 ) {
+    if ( (pidcRctl & RCTL_RUNS)  == 0 ) {
       // Poll/Thermocouple == 0 Shutdown
       Serial.println('pidc stop');
       Un = 0;
@@ -1173,12 +1246,12 @@ void pidcLoop() {
         }  
       }
       Un = Un1 + dUn;
+      pidcUn = Un;
       // Updates indexed values;
       Un1   = Un;
       Epn1  = Epn;
       Edfn2 = Edfn1;
       Edfn1 = Edfn;
-      pidcUn = Un;
     }
   }    
 }
@@ -1241,6 +1314,8 @@ void profLoop() {
   } else {
     profPrev = millis();
     profTogo = PROF_POLL_MSEC ;
+    // update billboard
+    bbrdFill();
     // prevent lcd rollover; 6000 secs == 100 min 
     (totlSecs > 5998) ? (totlSecs = 0):(totlSecs += 1);
     (stepSecs > 5998) ? (stepSecs = 0):(stepSecs += 1);
@@ -1289,16 +1364,17 @@ void profLoop() {
       }
     }
     // Run exp mavg of temp rate of Rise 
-    if (( totlSecs % 6) == 0) {
-      cdpmHist[3] = cdpmHist[2] ;
-      cdpmHist[2] = cdpmHist[1] ;
-      cdpmHist[1] = cdpmHist[0] ;
-      cdpmHist[0] = (int)(sensTmpC - prevTmpC)  ;
-      prevTmpC    = sensTmpC;
-      // ROC degrees per min is 60 * avg per secon change 
-      sensCdpm =      ( 4 * cdpmHist[0]  +  3 * cdpmHist[1] \     
-                      + 2 * cdpmHist[2]  +      cdpmHist[3] ); 
-    }                  
+    cdpmHist[5] = cdpmHist[4] ;
+    cdpmHist[4] = cdpmHist[3] ;
+    cdpmHist[3] = cdpmHist[2] ;
+    cdpmHist[2] = cdpmHist[1] ;
+    cdpmHist[1] = cdpmHist[0] ;
+    cdpmHist[0] = (int)(sensTmpC - prevTmpC)  ;
+    prevTmpC    = sensTmpC;
+    // ROC degrees per min is 60 * avg per second change 
+    sensCdpm =      ( 16 * cdpmHist[0]  + 12 * cdpmHist[1] \     
+                    + 10 * cdpmHist[2]  +  8 * cdpmHist[3] \
+                    +  3 * cdpmHist[4]  +  1 * cdpmHist[5] ); 
     if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
       //Serial.print("Curr:");
       //Serial.print(sensTmpC);
@@ -1436,8 +1512,8 @@ void pwmdLoop() {
       }
       //Serial.print("pwmdTarg: ");
       //Serial.println(pwmdTarg);
-      pwmdOutp = byte(pwmdTarg);
-      pwmdPcnt = byte (100.0 * pwmdOutp / 255);
+      pwmdOutp = byte (pwmdTarg + 0.5);
+      pwmdPcnt = byte ((100.0 * pwmdOutp / 255) +0.5);
       if ( !(offnRctl & RCTL_AUTO)) {
         // Off/On not RCTL_AUTO means use fast analog PWM
         analogWrite( PWMD_OPIN, pwmdOutp);
@@ -1506,63 +1582,63 @@ void rotsLoop() {
           break;
           case 1:
             profStep = 1;
-            userCmdl = "R0";
+            userCmdl = "w30";
           break;
           case 2:
             profStep = 2;
-            userCmdl = "R5";
+            userCmdl = "W35";
           break;
           case 3:
             profStep = 3;
-            userCmdl = "R10";
+            userCmdl = "W40";
           break;
           case 4:
             profStep = 4;
-            userCmdl = "R20";
+            userCmdl = "W45";
           break;
           case 5:
             profStep = 5;
-            userCmdl = "R30";
+            userCmdl = "W50";
           break;
           case 6:
             profStep = 6;
-            userCmdl = "R45";
+            userCmdl = "W55";
           break;
           case 7:
             profStep = 7;
-            userCmdl = "R60";
+            userCmdl = "W60";
           break;
           case 8:
             profStep = 8;
-            userCmdl = "R90";
+            userCmdl = "W65";
           break;
           case 9:
             profStep = 9;
-            userCmdl = "W100";
+            userCmdl = "W70";
           break;
           case 10:
             profStep = 10;
-            userCmdl = "R68";
+            userCmdl = "W75";
           break;
           case 11:
             profStep = 11;
-            userCmdl = "W46";
+            userCmdl = "W80";
           break;
           case 12:
             profStep = 12;
-            userCmdl = "W32";
+            userCmdl = "W85";
           break;
           case 13:
             profStep = 13;
-            userCmdl = "W22";
+            userCmdl = "W90";
           break;
           case 14:
             profStep = 14;
-            userCmdl = "w15";
+            userCmdl = "W95";
           break;
           case 15:
             profStep = 15;
-            userCmdl = "W10";
+            userCmdl = "W100";
           break;
         }  
         userRctl |= RCTL_ATTN; 
@@ -1945,7 +2021,7 @@ void setup() {
   profInit();
 #if PROC_ESP
   if (wifiRctl & RCTL_RUNS) {
-    if ( bbrdRctl & RCTL_ARTI == 0) {
+    if ( (bbrdRctl & RCTL_ARTI) == 0) {
       Serial.println();
       Serial.print("Connecting to ");
       Serial.println(ssid);
@@ -1953,12 +2029,12 @@ void setup() {
     //  Wifi Setup 
     WiFi.begin(ssid, password);
     while (WiFi.status() != WL_CONNECTED) {
-    if ( bbrdRctl & RCTL_ARTI == 0) {
+    if ( (bbrdRctl & RCTL_ARTI) == 0) {
       Serial.print(".");
     }  
       delay(4000);
     }
-    if ( bbrdRctl & RCTL_ARTI == 0) {
+    if ( (bbrdRctl & RCTL_ARTI) == 0) {
       Serial.println("");
       Serial.println("WiFi conn to IP: ");
       Serial.println(WiFi.localIP());
@@ -1969,7 +2045,7 @@ void setup() {
     popcMqtt.onDisconnected(discCbck);
     popcMqtt.onPublished(publCbck);
     popcMqtt.onData(dataCbck);
-    if ( bbrdRctl & RCTL_ARTI == 0) {
+    if ( (bbrdRctl & RCTL_ARTI) == 0) {
       Serial.println("Connect to mqtt...");
     }  
     popcMqtt.connect();
@@ -2026,14 +2102,13 @@ void loop() {
   if (userRctl & RCTL_ATTN) {
     userSvce();
   }  
-  bbrdLoop();
+  profLoop();
 #if PROC_ESP
   popcShed.update();
 #endif  
 #if WITH_LCD
   lcdsLoop();
 #endif  
-  profLoop();
   //frntLoop();
   // Why delay(10);
   delay(10);
