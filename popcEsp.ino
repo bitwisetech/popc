@@ -1,4 +1,3 @@
-
 /// roboPopc Arduino UNO / ESP8266 Controller / Artisan Logger with MQTT client 'popc'
 // 
 //  Sections (units) in this code, ordered alphabetically:
@@ -87,10 +86,6 @@
 #define OFFN_POLL_MSEC   23UL            // mS run control poll
 #define POLL_SLOP_MSEC    5UL            // Avge loop time is 10mSec 
 
-//
-#define ambiTmpC  28                     //  28C  82F as room temp 
-#define maxiTmpC 248                     // 248C 480F as maximum temp 
-
 // BOF preprocessor bug prevent - insert me on top of your arduino-code
 // From: http://www.a-control.de/arduino-fehler/?lang=en
 #if 1
@@ -98,6 +93,7 @@ __asm volatile ("nop");
 #endif
 
 // 
+#include <Arduino.h>
 #if PROC_ESP
 #include <Adafruit_ESP8266.h>
 // Beg paste from pubsShed 
@@ -114,12 +110,81 @@ __asm volatile ("nop");
 #include <ESP8266WiFiScan.h>
 #include <ESP8266WiFiSTA.h>
 #include <ESP8266WiFiMulti.h>
+//Jn01 WifiManager 
+#include <DNSServer.h>            //Local DNS Server used for redirecting all requests to the configuration portal
+#include <ESP8266WebServer.h>     //Local WebServer used to serve the configuration portal
+#include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager WiFi Configuration Magic
+//  Jn02 arduWWebSockets
+#include <WebSocketsServer.h>
+#include <Hash.h>
+//
+#include <MQTT.h>
+#define MQCL_ID "popc"
+//
+// wifi Replace with your own network's SSID, Password
+//const char* ssid     = "wrtg8101";
+//const char* password = "Summerseat";
+//const char* ssid     = "inactive";
+//const char* password = "pickledcrab1102190";
+//const char* ssid     = "bitwComc";
+//const char* password = "tWiStEdTeA";
+//
+// wifiManager.autoConnect("ssid", "password");
+//
+const char* APssid = "espc8101";
+//
+const char* APPass = "Summerseat";
+//
+// create MQTT object with IP address, port of MQTT broker e.g.mosquitto application
+// MQTT myMqtt(MQCL_ID, "MQTTServerName", MQTTServerPort);
+//MQTT popcMqtt(MQCL_ID, "test.mosquitto.org", 1883);
+//
+MQTT popcMqtt(MQCL_ID, "172.20.224.111", 5983);
+//MQTT popcMqtt(MQCL_ID, "172.20.224.107", 5983);
+//MQTT popcMqtt(MQCL_ID, "172.20.224.117", 5983);
+//MQTT popcMqtt(MQCL_ID, "192.168.122.1", 5983);
+//
+//  WebSockets
+ESP8266WiFiMulti WiFiMulti;
+WebSocketsServer webSocket = WebSocketsServer(5981);
+#define USE_SERIAL Serial
+
+
+void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t lenght) {
+  switch(type) {
+    case WStype_DISCONNECTED:
+      USE_SERIAL.printf("[%u] popcSockSrvr Disconnected!\n", num);
+    break;
+    case WStype_CONNECTED: {
+      IPAddress ip = webSocket.remoteIP(num);
+      USE_SERIAL.printf("[%u] popcSockSrvr Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
+    	// send message to client
+		  webSocket.sendTXT(num, "popcSockSrvr acks Connected");
+    }
+    break;
+    case WStype_TEXT:
+      USE_SERIAL.printf("[%u] get Text: %s\n", num, payload);
+      // send message to client
+      // webSocket.sendTXT(num, "popcSockSrvr message here");
+
+      // send data to all connected clients
+      // webSocket.broadcastTXT("popcSockSrvr message here");
+    break;
+    case WStype_BIN:
+    USE_SERIAL.printf("[%u] popcSockSrvr get binary length: %u\n", num, lenght);
+    hexdump(payload, lenght);
+
+    // send message to client
+    // webSocket.sendBIN(num, payload, length);
+    break;
+  }
+}
 
 // from another copy ??
 #include <dummy.h>
 #endif
 
-const char versChrs[] = "Ap26 1.5 6.0 0.6 2.0 0.4 ";
+const char versChrs[] = "Jn04 2.5 8.0 0.025 balAmb";
 
 /// Declarations by unit
 
@@ -137,6 +202,10 @@ char *dbugLine = " <==>                                                         
 char centScal  = 'C';
 char fahrScal  = 'F';
 char userScal  = 'C';
+
+//
+float   ambiTmpC  = 28;                    //  28C  82F rm temp then W0 + fan htr temp
+#define maxiTmpC    248                    // 248C 480F as maximum temp 
 
 // Theese two lines must contain tab chars, not spaces
 const char csvlLin1[] = "Date:	Unit:C	CHARGE:	TP:	DRYe:	FCs:	FCe:	SCs:	SCe:	DROP:	COOL:	Time:";
@@ -171,10 +240,10 @@ LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  // Set the LCD I
 char mqttVals[] =  "                ";                     // mqtt value string 15 char max
 // Artisan interface                                          'Read' Cmd; Send Ambient:Targ:Sens:Prof:Duty
 const char AmbiTops[]    = "/popc/arti/ATmp";
-const char Chn1Tops[]    = "/popc/arti/Chn1";
-const char Chn2Tops[]    = "/popc/arti/Chn2";
-const char Chn3Tops[]    = "/popc/arti/Chn3";
-const char Chn4Tops[]    = "/popc/arti/Chn4";
+const char ETmpTops[]    = "/popc/arti/ETmp";
+const char BTmpTops[]    = "/popc/arti/BTmp";
+const char PTmpTops[]    = "/popc/arti/PTmp";
+const char PwmdTops[]    = "/popc/arti/Pwmd";
 // PID controller topics
 const char RnTops[]    = "/popc/pidc/Rn";
 const char YnTops[]    = "/popc/pidc/Yn";
@@ -197,33 +266,6 @@ const char ptmpTops[]  = "/popc/profDegs";
 const char c500Tops[]  = "/popc/cbck5000";
 const char echoTops[]  = "/popc/echoCmdl";
 
-#if PROC_ESP
-#include <MQTT.h>
-#define MQCL_ID "popc"
-
-// create MQTT object with IP address, port of MQTT broker e.g.mosquitto application
-// MQTT myMqtt(MQCL_ID, "MQTTServerName", MQTTServerPort);
-//MQTT popcMqtt(MQCL_ID, "test.mosquitto.org", 1883);
-//
-MQTT popcMqtt(MQCL_ID, "172.20.224.111", 5983);
-//MQTT popcMqtt(MQCL_ID, "172.20.224.107", 5983);
-//MQTT popcMqtt(MQCL_ID, "172.20.224.117", 5983);
-//MQTT popcMqtt(MQCL_ID, "192.168.122.1", 5983);
-//
-// wifi Replace with your own network's SSID, Password
-//const char* ssid     = "mySSID";
-//const char* password = "myNetPassword";
-//const char* ssid     = "hive";
-//const char* password = "pErE6%0^dDyR1*6$";
-//
-const char* ssid     = "inactive";
-//
-const char* password = "pickledcrab1102190";
-//const char* ssid     = "bitwComc";
-//const char* password = "tWiStEdTeA";
-
-#endif
-
 //pidc
 #if WITH_OFFN
 // Slow response PID to match 4sec cycle of SSR Off-On 
@@ -244,14 +286,26 @@ float pidcTd      =   0.050;              // D-Term Gain sec ( Td++ = Gain++)
 // My4-2  1.000   4.000   1.000   2.000     0.400
 // My4-3  1.000   5.000   2.000   2.000     0.400
 // My4-4  0.800   4.000   2.000   2.000     0.400
+// My07   1.000   4.000   1.000   2.000     0.400 
+// My09   1.000   6.000   0.100   1.000     1.000 
+// My11   1.200   5.000   0.100   1.000     1.000  Did not download 
+// My11   2.000   5.000   0.050   1.000     1.000  Still lags / oshoots
+// My24   3.000   6.000   0.750   1.000     1.000  PWM oscillates              
+// My25   2.000   5.000   0.050   1.000     1.000  Still lags / oshoots
+// Jn01   2.250   4.000   0.100   1.000     1.000  Migs-Furn High osht then drop 
+// Jn01   1.800   5.000   0.050   1.000     1.000  Braz-Furn BSF Still osc
+// Jn01   2.000   4.000   0.025   1.000     1.000  Jn02-Vuid
+// Jn01   3.600  10.000   0.025   1.000     1.000  not installed           
+// Jn02   3.000   8.000   0.025   1.000     1.000  Jn03-Furn Osc grows     
+// Jn04   2.400   8.000   0.025   1.000     1.000  Jn04-Migs-Furn BBSF     
 //
-float pidcKp      =   1.000;                      // P-Term gain
-float pidcTi      =   4.000;                   // I-Term Gain sec ( Ti++ = Gain--)
-float pidcTd      =   1.000;                  // D-Term Gain sec ( Td++ = Gain++)
+float pidcKp      =   2.400;              // P-Term gain
+float pidcTi      =   8.000;              // I-Term Gain sec ( Ti++ = Gain--)
+float pidcTd      =   0.025;              // D-Term Gain sec ( Td++ = Gain++)
 #endif
 //
-float pidcBeta    =   2.000;              // P-term Refr vs YInp
-float pidcGamma   =   0.400;              // D-term Refr vs YInp
+float pidcBeta    =   1.000;              // P-term Refr vs YInp
+float pidcGamma   =   1.000;              // D-term Refr vs YInp
 float pidcAlpha   =   0.100;              // D-term Filter time
 //
 float pidcRn      =  ambiTmpC;            // Refr setpoint
@@ -562,14 +616,14 @@ void bbrdFill() {
         dtostrf( floatCtoF(ambiTmpC),      5, 1, &artiResp[0]  );
         dtostrf( floatCtoF(targTmpC),      5, 1, &artiResp[6]  );
         dtostrf( floatCtoF(sensTmpC),      5, 1, &artiResp[12] );
-        dtostrf( floatCtoF(ambiTmpC - 2 ), 5, 1, &artiResp[18] );
-        dtostrf( floatCtoF(ambiTmpC - 5 ), 5, 1, &artiResp[24] );
+        dtostrf( floatCtoF(44.4)         , 5, 1, &artiResp[18] );
+        dtostrf( floatCtoF(55.5)         , 5, 1, &artiResp[24] );
       } else {
         dtostrf(           ambiTmpC,       5, 1, &artiResp[0]  );
         dtostrf(           targTmpC,       5, 1, &artiResp[6]  );
         dtostrf(           sensTmpC,       5, 1, &artiResp[12] );
-        dtostrf(           ambiTmpC - 2,   5, 1, &artiResp[18] );
-        dtostrf(           ambiTmpC - 5,   5, 1, &artiResp[24] );
+        dtostrf(           44.4        ,   5, 1, &artiResp[18] );
+        dtostrf(           55.5        ,   5, 1, &artiResp[24] );
       } 
       artiResp[5]  = ',';
       artiResp[11] = ',';
@@ -889,7 +943,7 @@ void cb20Svce() {
     dtostrf(           targTmpC , 5, 1, mqttVals);
 	}		
 #if PROC_ESP  
-  rCode += popcMqtt.publish( (const char * )Chn1Tops , (const char * )mqttVals, 15 ); 
+  rCode += popcMqtt.publish( (const char * )ETmpTops , (const char * )mqttVals, 15 ); 
 #endif  
   //
   if ( userScal == fahrScal) {
@@ -898,7 +952,7 @@ void cb20Svce() {
     dtostrf(           sensTmpC , 5, 1, mqttVals);
 	}		
 #if PROC_ESP  
-  rCode += popcMqtt.publish( (const char * )Chn2Tops , (const char * )mqttVals, 15 ); 
+  rCode += popcMqtt.publish( (const char * )BTmpTops , (const char * )mqttVals, 15 ); 
 #endif  
   //
   if ( userScal == fahrScal) {
@@ -907,12 +961,12 @@ void cb20Svce() {
     dtostrf(           profTmpC , 5, 1, mqttVals);
 	}		
 #if PROC_ESP  
-  rCode += popcMqtt.publish( (const char * )Chn3Tops , (const char * )mqttVals, 15 ); 
+  rCode += popcMqtt.publish( (const char * )PTmpTops , (const char * )mqttVals, 15 ); 
 #endif  
   //
   dtostrf(             pwmdPcnt , 5, 1, mqttVals);
 #if PROC_ESP  
-  rCode += popcMqtt.publish( (const char * )Chn4Tops , (const char * )mqttVals, 15 ); 
+  rCode += popcMqtt.publish( (const char * )PwmdTops , (const char * )mqttVals, 15 ); 
 #endif  
   //
   //
@@ -1369,12 +1423,12 @@ void profLoop() {
     cdpmHist[3] = cdpmHist[2] ;
     cdpmHist[2] = cdpmHist[1] ;
     cdpmHist[1] = cdpmHist[0] ;
-    cdpmHist[0] = (int)(sensTmpC - prevTmpC)  ;
+    cdpmHist[0] = (int)(sensTmpC) - prevTmpC  ;
     prevTmpC    = sensTmpC;
     // ROC degrees per min is 60 * avg per second change 
-    sensCdpm =      ( 16 * cdpmHist[0]  + 12 * cdpmHist[1] \     
-                    + 10 * cdpmHist[2]  +  8 * cdpmHist[3] \
-                    +  3 * cdpmHist[4]  +  1 * cdpmHist[5] ); 
+    sensCdpm =      ( 15 * cdpmHist[0]  + 15 * cdpmHist[1] \     
+                    + 10 * cdpmHist[2]  + 10 * cdpmHist[3] \
+                    +  5 * cdpmHist[4]  +  5 * cdpmHist[5] ); 
     if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
       //Serial.print("Curr:");
       //Serial.print(sensTmpC);
@@ -1582,11 +1636,11 @@ void rotsLoop() {
           break;
           case 1:
             profStep = 1;
-            userCmdl = "w30";
+            userCmdl = "w20";
           break;
           case 2:
             profStep = 2;
-            userCmdl = "W35";
+            userCmdl = "W30";
           break;
           case 3:
             profStep = 3;
@@ -1704,7 +1758,7 @@ void virtTcplLoop() {
     heatHist[0] = heatInpu;
   }  
 #endif
-// Ap16 
+// Ap16 0.200 total
     pwmdMavg = int( 0.00 * heatInpu     \
                  +  0.00 * heatHist[0]  \
                  +  0.00 * heatHist[1]  \
@@ -1722,22 +1776,22 @@ void virtTcplLoop() {
                  +  0.00 * heatHist[13] \
                  +  0.00 * heatHist[14] \
                  +  0.01 * heatHist[15] \
-                 +  0.00 * heatHist[16] \
+                 +  0.01 * heatHist[16] \
                  +  0.01 * heatHist[17] \
-                 +  0.00 * heatHist[18] \
+                 +  0.01 * heatHist[18] \
                  +  0.01 * heatHist[19] \
-                 +  0.01 * heatHist[20] \
-                 +  0.01 * heatHist[21] \
-                 +  0.02 * heatHist[22] \
-                 +  0.04 * heatHist[23] \
-                 +  0.10 * heatHist[24] \
-                 +  0.16 * heatHist[25] \
-                 +  0.48 * heatHist[26] \
-                 +  0.64 * heatHist[27] \
+                 +  0.02 * heatHist[20] \
+                 +  0.04 * heatHist[21] \
+                 +  0.08 * heatHist[22] \
+                 +  0.10 * heatHist[23] \
+                 +  0.20 * heatHist[24] \
+                 +  0.40 * heatHist[25] \
+                 +  0.80 * heatHist[26] \
+                 +  0.80 * heatHist[27] \
                  +  0.40 * heatHist[28] \
-                 +  0.08 * heatHist[29] \
-                 +  0.02 * heatHist[30] \
-                 +  0.01 * heatHist[31] ); 
+                 +  0.20 * heatHist[29] \
+                 +  0.10 * heatHist[30] \
+                 +  0.05 * heatHist[31] ); 
     sensTmpC = sensTmpC + float(pwmdMavg) / 255.0 \
                  -  (sensTmpC - ambiTmpC) / 72.0;
 //                 
@@ -1979,8 +2033,9 @@ void userSvce() {
     userDuty = (userCmdl.substring(1)).toInt();
     if (userDuty > 99) userDuty = 100;
     if ( userDuty == 0) {
-      // Power off: Set temp setpt to nominal
-      profTmpC = ambiTmpC;
+      // Power off: Sense ambient ( fan htr pwr), temp setpt to meas ambient
+      ambiTmpC = sensTmpC;
+      profTmpC = int(ambiTmpC);
     }
     pwmdRctl &= ~RCTL_AUTO;
     pwmdRctl |=  RCTL_MANU;
@@ -2023,22 +2078,47 @@ void setup() {
   if (wifiRctl & RCTL_RUNS) {
     if ( (bbrdRctl & RCTL_ARTI) == 0) {
       Serial.println();
-      Serial.print("Connecting to ");
-      Serial.println(ssid);
-    }  
-    //  Wifi Setup 
-    WiFi.begin(ssid, password);
-    while (WiFi.status() != WL_CONNECTED) {
-    if ( (bbrdRctl & RCTL_ARTI) == 0) {
-      Serial.print(".");
-    }  
-      delay(4000);
+      Serial.print("WifiMan AP SSID: ");
+      Serial.println(APssid);
+    } 
+    //Jn01 
+    WiFiManager wifiManager; //   Also in the setup function add
+    //set custom ip for portal
+    ////wifiManager.setAPStaticIPConfig(IPAddress(172,20,224,120), IPAddress(172,20,224,120), IPAddress(255,255,255,0));
+    //first parameter is name of access point, second is the password
+    ////wifiManager.autoConnect(APssid, APPass);
+    //  WebSockets
+    //Serial.setDebugOutput(true);
+    USE_SERIAL.setDebugOutput(true);
+    USE_SERIAL.println();
+    USE_SERIAL.println();
+    for(uint8_t t = 4; t > 0; t--) {
+        USE_SERIAL.printf("[SETUP] BOOT WAIT %d...\n", t);
+        USE_SERIAL.flush();
+        delay(1000);
     }
-    if ( (bbrdRctl & RCTL_ARTI) == 0) {
-      Serial.println("");
-      Serial.println("WiFi conn to IP: ");
-      Serial.println(WiFi.localIP());
-    }  
+    //WiFiMulti.addAP("SSID", "passpasspass");
+    WiFiMulti.addAP("inactive", "pickledcrab1102190");
+    //
+    while(WiFiMulti.run() != WL_CONNECTED) {
+        delay(100);
+    }
+    webSocket.begin();
+    //    webSocket.setAuthorization("user", "Password"); // HTTP Basic Authorization
+    webSocket.onEvent(webSocketEvent);
+    //  Wifi Setup 
+    //WiFi.begin(ssid, password);
+    //while (WiFi.status() != WL_CONNECTED) {
+    //if ( (bbrdRctl & RCTL_ARTI) == 0) {
+    //  Serial.print(".");
+    //}  
+    //  delay(4000);
+    // }
+    //if ( (bbrdRctl & RCTL_ARTI) == 0) {
+     //  Serial.println("");
+     // Serial.println("WiFi conn to IP: ");
+     // Serial.println(WiFi.localIP());
+    //}  
     //  MQTT Setup 
     //    setup callbacks
     popcMqtt.onConnected(connCbck);
@@ -2046,10 +2126,13 @@ void setup() {
     popcMqtt.onPublished(publCbck);
     popcMqtt.onData(dataCbck);
     if ( (bbrdRctl & RCTL_ARTI) == 0) {
-      Serial.println("Connect to mqtt...");
+      Serial.println("Call popcMgtt.Connect()");
     }  
     popcMqtt.connect();
     delay(8000);
+    if ( (bbrdRctl & RCTL_ARTI) == 0) {
+      Serial.println("Call popcMqtt.Subs()");
+    }  
     popcSubs();
   }  
 
@@ -2105,10 +2188,11 @@ void loop() {
   profLoop();
 #if PROC_ESP
   popcShed.update();
+  webSocket.loop(); 
 #endif  
 #if WITH_LCD
   lcdsLoop();
-#endif  
+#endif 
   //frntLoop();
   // Why delay(10);
   delay(10);
