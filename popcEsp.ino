@@ -54,13 +54,13 @@
 //
 
 //  Code section compiler switches - Rebuild and Upload after changing these 
-#define PROC_ESP      0                  // Compile for ESP8266
+#define PROC_ESP      1                  // Compile for ESP8266
 #define WIFI_WMAN     0                  // Compile for Wifi Manager
-#define WIFI_MQTT     0                  // Compile for Wifi MQTT client
+#define WIFI_MQTT     1                  // Compile for Wifi MQTT client
 #define WIFI_SOKS     0                  // Compile for Wifi Web Sckt Srvr
-#define PROC_UNO      1                  // Compile for Arduino Uno
-#define WITH_LCD      1                  // Hdwre has I2C 2x16 LCD display
-#define WITH_MAX31855 1                  // Hdwre has thermocouple + circuit
+#define PROC_UNO      0                  // Compile for Arduino Uno
+#define WITH_LCD      0                  // Hdwre has I2C 2x16 LCD display
+#define WITH_MAX31855 0                  // Hdwre has thermocouple + circuit
 #define WITH_OFFN     0                  // Use ~4sec Off-On SSR, not fast PWM
 #define IFAC_ARTI     0                  // Start with Artisan interface on Serial
 #define IFAC_FRNT     0                  // Obsolete Front/Process interface on Serial 
@@ -257,8 +257,8 @@ const char c500Tops[]  = "/popc/cbck5000";
 #if WITH_OFFN
 // Slow response PID to match 4sec cycle of SSR Off-On 
 float pidcKp      =   6.000;              // P-Term gain
-float pidcTi      =   4.000;              // I-Term Gain sec ( Ti++ = Gain--)
-float pidcTd      =   0.050;              // D-Term Gain sec ( Td++ = Gain++)
+float pidcTi      =   1.000;              // I-Term Gain sec ( Ti++ = Gain--)
+float pidcTd      =   0.200;              // D-Term Gain sec ( Td++ = Gain++)
 #else
 //Ap15
 // Fast response PID to match approx 30Hz PWM frequency 
@@ -286,11 +286,15 @@ float pidcTd      =   0.050;              // D-Term Gain sec ( Td++ = Gain++)
 // Jn02   3.000   8.000   0.025   1.000     1.000  Jn03-Furn Osc grows     
 // Jn04   2.400   8.000   0.025   1.000     1.000  Jn04-Migs-Furn BBSF     
 // 17Jn08 2.00 8.00 0.025 1.0 1.0
-// 17Jn10 1.75 8.00 0.025 1.0 1.0 John Diom & slow suma
+// 17Jn10 1.75 8.00 0.025 1.0 1.0 not installed 
+// 17Jn10 1.75 4.50 0.448 1.0 1.0 post Kt-Kp adj Kick up when ramp lowered
+// 17Jn10 2.00 5.00 0.320 1.0 1.0 tune: was slow on 20-10-5                
 //
-float pidcKp      =   1.750;              // P-Term gain
-float pidcTi      =   8.000;              // I-Term Gain sec ( Ti++ = Gain--)
-float pidcTd      =   0.025;              // D-Term Gain sec ( Td++ = Gain++)
+float pidcKp      =   2.000;              // P-Term gain
+//float pidcTi      =   8.000;              // Kt setting I-Term Gain sec ( Ti++ = Gain--)
+//float pidcTd      =   0.025;              // Kt setting D-Term Gain sec ( Td++ = Gain++)
+float pidcTi      =   5.000;              // I-Term Gain sec ( Ti++ = Gain--)
+float pidcTd      =   0.250;              // D-Term Gain sec ( Td++ = Gain++)
 #endif
 //
 float pidcBeta    =   1.000;              // P-term Refr vs YInp
@@ -310,7 +314,7 @@ float pidcPc, pidcIc, pidcDc       = 0.0; // cumulative P-I-D components
 float pidcUn = 0.0;                       // PID controller Output
 
 //
-const char versChrs[] = "17Jn08 2.00 8.00 0.025 1.0 1.0";
+const char versChrs[] = "17Jn10 2.00 5.00 0.250 1.0 1.0 CDpm was 1.75 4.5 0.320";
 
 // pwmd vbls
 int  pwmdFreq, pwmdDuty, pwmdTarg, pwmdOutp;                          // Freq, Duty Cycle Target (255max) Output
@@ -1255,14 +1259,16 @@ void pidcLoop() {
       pidcPc += pidcPn;
       // I term 
       if ( pidcTi > 0.0 ) {
-        pidcIn = pidcKp * ((Ts / pidcTi) * pidcEn);
+        //Jn10 KtKp pidcIn = pidcKp * ((Ts / pidcTi) * pidcEn);
+        pidcIn = ((Ts / pidcTi) * pidcEn);
       } else {
         pidcIn = 0;
       }    
       pidcIc += pidcIn;
       // D term
       if ( pidcTd > 0.0 ) {
-        pidcDn = pidcKp * ((pidcTd / Ts) * (Edfn - (2 * Edfn1) + Edfn2));
+        //Jn10 KtKp pidcDn = pidcKp * ((pidcTd / Ts) * (Edfn - (2 * Edfn1) + Edfn2));
+        pidcDn = ((pidcTd / Ts) * (Edfn - (2 * Edfn1) + Edfn2));
       } else {
         pidcDn = 0;
       } 
@@ -1414,24 +1420,26 @@ void profLoop() {
     }
     // Run exp mavg 5 second apart temp change 
     // ROC degrees per min is 60 * avg per second change 
-    sensCdpm = 12 * int ( ( int(sensTmpC) + degCHist[0] + degCHist[1] + degCHist[2] ) / 4   \
-                         -( degCHist[7]   + degCHist[6] + degCHist[5] + degCHist[4] ) / 4 ) ; 
-    degCHist[7] = degCHist[6] ;
-    degCHist[6] = degCHist[5] ;
-    degCHist[5] = degCHist[4] ;
-    degCHist[4] = degCHist[3] ;
-    degCHist[3] = degCHist[2] ;
-    degCHist[2] = degCHist[1] ;
-    degCHist[1] = degCHist[0] ;
-    degCHist[0] = int(sensTmpC);
-    prevTmpC    = sensTmpC;
-    if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-      //Serial.print("Curr:");
-      //Serial.print(sensTmpC);
-      //Serial.print(" Prev:");
-      //Serial.print(prevTmpC);
-      //Serial.print(" Cdpm:");
-      //Serial.println(sensCdpm);
+    if ( totlSecs % 2 ) {
+      sensCdpm = ( (  16 * int(sensTmpC) + 8 * degCHist[0] + 4 * degCHist[1] + 2 * degCHist[2] )\
+                    -(16 * degCHist[7]   + 8 * degCHist[6] + 4 * degCHist[5] + 2 * degCHist[4] ) ) ; 
+      degCHist[7] = degCHist[6] ;
+      degCHist[6] = degCHist[5] ;
+      degCHist[5] = degCHist[4] ;
+      degCHist[4] = degCHist[3] ;
+      degCHist[3] = degCHist[2] ;
+      degCHist[2] = degCHist[1] ;
+      degCHist[1] = degCHist[0] ;
+      degCHist[0] = int(sensTmpC);
+      prevTmpC    = sensTmpC;
+        if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+        //Serial.print("Curr:");
+        //Serial.print(sensTmpC);
+        //Serial.print(" Prev:");
+        //Serial.print(prevTmpC);
+        //Serial.print(" Cdpm:");
+        //Serial.println(sensCdpm);
+      }  
     }  
     if (( bbrdRctl & RCTL_ARTI ) == 0) {
       if ( bbrdRctl & RCTL_INFO ) {
@@ -1644,15 +1652,15 @@ void rotsLoop() {
           break;
           case 4:
             profStep = 4;
-            userCmdl = "W20";
+            userCmdl = "R20";
           break;
           case 5:
             profStep = 5;
-            userCmdl = "W25";
+            userCmdl = "R25";
           break;
           case 6:
             profStep = 6;
-            userCmdl = "W30";
+            userCmdl = "R30";
           break;
           case 7:
             profStep = 7;
@@ -1676,19 +1684,19 @@ void rotsLoop() {
           break;
           case 12:
             profStep = 12;
-            userCmdl = "W85";
+            userCmdl = "W80";
           break;
           case 13:
             profStep = 13;
-            userCmdl = "W80";
+            userCmdl = "W65";
           break;
           case 14:
             profStep = 14;
-            userCmdl = "W75";
+            userCmdl = "W50";
           break;
           case 15:
             profStep = 15;
-            userCmdl = "W70";
+            userCmdl = "W40";
           break;
         }  
         userRctl |= RCTL_ATTN; 
