@@ -56,7 +56,7 @@
 //  Code section compiler switches - Rebuild and Upload after changing these 
 #define PROC_ESP      1                  // Compile for ESP8266
 #define WIFI_WMAN     0                  // Compile for Wifi Manager
-#define WIFI_MQTT     1                  // Compile for Wifi MQTT client
+#define WIFI_MQTT     0                  // Compile for Wifi MQTT client
 #define WIFI_SOKS     0                  // Compile for Wifi Web Sckt Srvr
 #define PROC_UNO      0                  // Compile for Arduino Uno
 #define WITH_LCD      0                  // Hdwre has I2C 2x16 LCD display
@@ -803,7 +803,7 @@ void discCbck() {
     Serial.println("discCbck disc from mqtt, no wait  ");
     //delay(8000);
   }  
-  #if PROC_ESP  
+  #if WIFI_MQTT 
     Serial.println("discCbck : connect ");
     popcMqtt.connect();
     delay(4000);
@@ -965,7 +965,8 @@ void cbck2000() {
 }
 
 void cb20Svce() {
-  if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+  if ( 0 ) {
+  //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
     Serial.println("cb20Svce");
   }  
   int rCode = 0;
@@ -1033,7 +1034,8 @@ void cbck5000() {
 }
 
 void cb50Svce() {
-	if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+  if ( 0 ) {
+	//if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
   	Serial.println("cb50Svce");
 	}	
   int rCode = 0;
@@ -2203,11 +2205,10 @@ void setup() {
       Serial.println("WIFI_MQTT timeout : wait cbck cted & call popcMqtt.Subs");
     }  
     popcSubs();
-  }  
 #endif
+  }  
 
   //  Tick setup 
-  
   //  Sked setup
   //    TickerScheduler(uint size);
   //    boolean add(uint i, uint32_t period, tscallback_t f, boolean shouldFireNow = false);
