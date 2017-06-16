@@ -56,13 +56,13 @@
 //  Code section compiler switches - Rebuild and Upload after changing these 
 #define PROC_ESP      1                  // Compile for ESP8266
 #define WIFI_WMAN     0                  // Compile for Wifi Manager
-#define WIFI_MQTT     0                  // Compile for Wifi MQTT client
+#define WIFI_MQTT     1                  // Compile for Wifi MQTT client
 #define WIFI_SOKS     0                  // Compile for Wifi Web Sckt Srvr
 #define PROC_UNO      0                  // Compile for Arduino Uno
 #define WITH_LCD      0                  // Hdwre has I2C 2x16 LCD display
 #define WITH_MAX31855 0                  // Hdwre has thermocouple + circuit
 #define WITH_OFFN     0                  // Use ~4sec Off-On SSR, not fast PWM
-#define IFAC_ARTI     0                  // Start with Artisan interface on Serial
+#define IFAC_ARTI     1                  // Start with Artisan interface on Serial
 #define IFAC_FRNT     0                  // Obsolete Front/Process interface on Serial 
  
 #if 0
@@ -171,7 +171,7 @@ WebSocketsServer webSocket = WebSocketsServer(5981);
 /// Declarations by unit
 
 // 40+ char Used for Artisan: ambient, ch1, ch2, ch3, ch4 or Logging Tt Ts BT ET SV Duty on serial 
-char artiResp[] = "023.0,128.8,138.8,000.0,000.0           ";
+char artiResp[] = "023.0,128.8,138.8,000.0,000.0          ";  // 39 + null
 
 // billboard  Legend Lower cases: computed/Measured Upper case: User/Setpoints 
 char bbrdLin0[] = "w100% r-123 128c"; 
@@ -193,8 +193,10 @@ float   ambiTmpC  = 28;                    //  28C  82F rm temp then W0 + fan ht
 const char csvlLin1[] = "Date:	Unit:C	CHARGE:	TP:	DRYe:	FCs:	FCe:	SCs:	SCe:	DROP:	COOL:	Time:";
 const char csvlLin2[] = "Time1	Time2	BT	ET	Event	SV	DUTY";
 
-String userCmdl("exactly thirty one chars length");  // Crashable ! 
+String     userCmdl("exactly thirty one chars length");  // Crashable ! 
+char   userChrs[] = "023.0,128.8,138.8,000.0,000.0           ";  // 40sp 39 + nullch 
 
+#if IFAC_FRNT
 // FRNT
 union {                // This Data structure lets
   byte asBytes[24];    // us take the byte array
@@ -204,6 +206,7 @@ frntComm;              // float array
 byte Auto_Man = -1;
 byte Direct_Reverse = -1;
 unsigned long frntPoll; //this will help us know when to talk with processing
+#endif
 
 // lcd                                     
 // Pin A4 Pin A5 i2c
@@ -219,11 +222,11 @@ LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  // Set the LCD I
 
 // i-n-g-o MQTT 
 // mqtt strings are declared for both ESP8266 and UNO 
-char mqttVals[] =  "                ";                     // mqtt value string 15 char max
+char mqttVals[] =  "                ";                     // mqtt value 16sp 15ch max
 // General Info topics 
 const char inf0Tops[]  = "/popc/bbrdLin0";
 const char inf1Tops[]  = "/popc/bbrdLin1";
-const char eCmdTops[]  = "/popc/echoCmdl";
+const char echoTops[]  = "/popc/echoCmdl";
 const char userTops[]  = "/popc/userCmdl";
 const char psecTops[]  = "/popc/stepSecs";
 const char pcntTops[]  = "/popc/pwmd/perCent";
@@ -289,12 +292,13 @@ float pidcTd      =   0.200;              // D-Term Gain sec ( Td++ = Gain++)
 // 17Jn10 1.75 8.00 0.025 1.0 1.0 not installed 
 // 17Jn10 1.75 4.50 0.448 1.0 1.0 post Kt-Kp adj Kick up when ramp lowered
 // 17Jn10 2.00 5.00 0.320 1.0 1.0 tune: was slow on 20-10-5                
+// 17Jn14 2.25 4.25 0.250 1.0 1.0 Je14 Ethi need more Kp
 //
-float pidcKp      =   2.200;              // P-Term gain
-float pidcTi      =   4.500;              // I-Term Gain sec ( Ti++ = Gain--)
-float pidcTd      =   0.200;              // D-Term Gain sec ( Td++ = Gain++)
-//float pidcTi      =   8.000;              // Kt setting I-Term Gain sec ( Ti++ = Gain--)
-//float pidcTd      =   0.025;              // Kt setting D-Term Gain sec ( Td++ = Gain++)
+float pidcKp      =   2.50;               // P-Term gain
+float pidcTi      =   4.00;               // I-Term Gain sec ( Ti++ = Gain--)
+float pidcTd      =   0.10;               // D-Term Gain sec ( Td++ = Gain++)
+//float pidcTi      =   8.00;             // Kt setting I-Term Gain sec ( Ti++ = Gain--)
+//float pidcTd      =   0.25;             // Kt setting D-Term Gain sec ( Td++ = Gain++)
 #endif
 //
 float pidcBeta    =   1.000;              // P-term Refr vs YInp
@@ -314,7 +318,7 @@ float pidcPc, pidcIc, pidcDc       = 0.0; // cumulative P-I-D components
 float pidcUn = 0.0;                       // PID controller Output
 
 //
-const char versChrs[] = "17Jn13 2.00 4.50 0.20 1.0 1.0 10x rateHist";
+const char versChrs[] = "17Jn14-1300 2.50 4.00 0.10 1.0 1.0 post Ethi";
 
 // pwmd vbls
 int  pwmdFreq, pwmdDuty, pwmdTarg, pwmdOutp;                          // Freq, Duty Cycle Target (255max) Output
@@ -522,6 +526,26 @@ unsigned long mSecPast( unsigned long mSecLast) {
 }
 
 /// Billboard LCDisplay and Serial info Lines 
+void  bbrdArti() {
+  // Artisan Iface : resp 'READ' = Amb,Ch1,2,3,4 Amb,ET,BT,PT,PW
+  if ( userScal == fahrScal) {
+    dtostrf( floatCtoF(ambiTmpC), 5, 1, &artiResp[0]  );
+    dtostrf( floatCtoF(targTmpC), 5, 1, &artiResp[6]  );
+    dtostrf( floatCtoF(sensTmpC), 5, 1, &artiResp[12] );
+    dtostrf( floatCtoF(profTmpC), 5, 1, &artiResp[18] );
+  } else {
+    dtostrf(           ambiTmpC,  5, 1, &artiResp[0]  );
+    dtostrf(           targTmpC,  5, 1, &artiResp[6]  );
+    dtostrf(           sensTmpC,  5, 1, &artiResp[12] );
+    dtostrf(           profTmpC,  5, 1, &artiResp[18] );
+  } 
+  dtostrf(             pwmdPcnt,  5, 1, &artiResp[24] );
+  artiResp[5]  = ',';
+  artiResp[11] = ',';
+  artiResp[17] = ',';
+  artiResp[23] = ',';
+}  
+
 //
 void bbrdFill() {
   // billboard fill lcd sisplay 32 chars for lcd / mqtt / serial 
@@ -529,7 +553,7 @@ void bbrdFill() {
   // billboard line[0]; strf ops append null chars, fill single chars later 
   dtostrf( pwmdPcnt,                              3, 0, &bbrdLin0[1]);
   // Odd secs: show desred ROC; Even secs: show measured ROC 
-  if ((profCdpm != 0) && ( totlSecs % 2 )){
+  if ((stepSecs != 0) && ( totlSecs % 2 )){
     dtostrf( userDgpm,                           +4, 0, &bbrdLin0[7] );
   } else {
     if ( userScal == fahrScal) {
@@ -551,13 +575,13 @@ void bbrdFill() {
   bbrdLin0[4]   = '%';
   bbrdLin0[5]  = ' ';
   // Odd secs: show desred ROC; Even secs: show measured ROC 
-  if ((profCdpm != 0) && ( totlSecs % 2 )){
+  if (( stepSecs != 0 ) && ( totlSecs % 2 )){
     bbrdLin0[6]  = 'R';
   } else {
     bbrdLin0[6]  = 'r';
   } 
   bbrdLin0[11] = ' ';
-  bbrdLin0[15]  = userScal + 0x20;
+  bbrdLin0[15]  = userScal + 0x20;           // lowCase
   //
   // billboard line[1]; strf ops append null chars, fill single chars later 
   // At even seconds show total time, odd seconds show step time in min.minths   
@@ -574,7 +598,8 @@ void bbrdFill() {
     } else {
       dtostrf(           targTmpC,                  3, 0, &bbrdLin1[12] );
     }  
-    bbrdLin1[15]  = userScal + 0x20;
+    //bbrdLin1[15]  = userScal + 0x20;           // lowCase
+    bbrdLin1[15]  = userScal;                  //  upCase
   } else {
     dtostrf( ((totlSecs / 6) % 10), 1, 0, &bbrdLin1[9]);
     if ( userScal == fahrScal) {
@@ -582,7 +607,7 @@ void bbrdFill() {
     } else {
       dtostrf(           profTmpC,                  3, 0, &bbrdLin1[12] );
     }  
-    bbrdLin1[15]  = userScal;
+    bbrdLin1[15]  = userScal;                  //  upCase
   }  
   // fill line[1] legend 
   bbrdLin1[0]   = 'P';
@@ -600,23 +625,7 @@ void bbrdFill() {
   bbrdLin1[11]  = ' ';
   // fill info for serial output either Artisan protocol or console Info/csv logging 
   if ( bbrdRctl & RCTL_ARTI ) {
-    // Artisan Iface : resp 'READ' = Amb,Ch1,2,3,4 Amb,ET,BT,PT,PW
-    if ( userScal == fahrScal) {
-      dtostrf( floatCtoF(ambiTmpC), 5, 1, &artiResp[0]  );
-      dtostrf( floatCtoF(targTmpC), 5, 1, &artiResp[6]  );
-      dtostrf( floatCtoF(sensTmpC), 5, 1, &artiResp[12] );
-      dtostrf( floatCtoF(profTmpC), 5, 1, &artiResp[18] );
-    } else {
-      dtostrf(           ambiTmpC,  5, 1, &artiResp[0]  );
-      dtostrf(           targTmpC,  5, 1, &artiResp[6]  );
-      dtostrf(           sensTmpC,  5, 1, &artiResp[12] );
-      dtostrf(           profTmpC,  5, 1, &artiResp[18] );
-    } 
-    dtostrf(             pwmdPcnt,  5, 1, &artiResp[24] );
-    artiResp[5]  = ',';
-    artiResp[11] = ',';
-    artiResp[17] = ',';
-    artiResp[23] = ',';
+    bbrdArti();
   } else {
     // ~ARTI
     //if ( !( bbrdRctl & RCTL_INFO ) && !(totlSecs % 2)) {
@@ -799,12 +808,14 @@ void connCbck() {
 }
 
 void discCbck() {
-  if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-    Serial.println("discCbck disc from mqtt, no wait  ");
-    //delay(8000);
+  if ( !( bbrdRctl & RCTL_ARTI ) ) {
+    Serial.println("discCbck disc from mqtt, pause ..");
+    delay(1000);
   }  
   #if WIFI_MQTT 
-    Serial.println("discCbck : connect ");
+  if ( !( bbrdRctl & RCTL_ARTI ) ) {
+      Serial.println("discCbck : popcMqtt.connect pause  4 ..");
+    }  
     popcMqtt.connect();
     delay(4000);
     if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
@@ -887,13 +898,17 @@ void dataCbck(String& topic, String& data) {
     }  
   }
   topiIndx = topic.indexOf("userCmdl");
+  //char * charPntr = strncpy (userChrs, "userCmdl");
   if (topiIndx >= 0){
     // copy data into user command line
+    //
     userCmdl = String(data);
-    //strncpy(userCmdl, String(data), sizeof(userCmdl));
+    //strncpy(userChrs, data, sizeof(userChrs));
+    // //test 
     userRctl |= RCTL_ATTN; 
+    //if ( 0 ) {
     if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-      Serial.print("dataCbck-User Command: ");
+      Serial.print("dataCbck-userCmdl - ");
       Serial.println(userCmdl);
     }
   }  
@@ -937,16 +952,16 @@ void cb10Svce() {
   int rCode = 0;
   //
   dtostrf( pidcRn, 8, 3, mqttVals);
-  wrapPubl( (const char * )RnTops , (const char * )mqttVals, 15 ); 
+  wrapPubl( (const char * )RnTops , (const char * )mqttVals, sizeof(mqttVals) ); 
   //
   dtostrf( pidcYn, 8, 3, mqttVals);
-  wrapPubl( (const char * )YnTops, (const char * )(mqttVals), 15 ); 
+  wrapPubl( (const char * )YnTops, (const char * )(mqttVals), sizeof(mqttVals) ); 
   //
   dtostrf( pidcEn, 8, 3, mqttVals);
-  wrapPubl( (const char * )EnTops, (const char * )(mqttVals), 15 ); 
+  wrapPubl( (const char * )EnTops, (const char * )(mqttVals), sizeof(mqttVals) ); 
   //
-  wrapPubl( (const char * )inf0Tops, (const char * )(bbrdLin0), 15 ); 
-  wrapPubl( (const char * )inf1Tops, (const char * )(bbrdLin1), 15 ); 
+  wrapPubl( (const char * )inf0Tops, (const char * )(bbrdLin0), sizeof(bbrdLin0) ); 
+  wrapPubl( (const char * )inf1Tops, (const char * )(bbrdLin1), sizeof(bbrdLin1) ); 
   //
   //if ( rCode) {
     //Serial.print("cbck1000 bad      RC: ");
@@ -976,50 +991,50 @@ void cb20Svce() {
   } else {
     dtostrf(           ambiTmpC , 5, 1, mqttVals);
 	}		
-  wrapPubl( (const char * )AmbiTops , (const char * )mqttVals, 15 ); 
+  wrapPubl( (const char * )AmbiTops , (const char * )mqttVals, sizeof(mqttVals) ); 
   //
   if ( userScal == fahrScal) {
     dtostrf( floatCtoF(targTmpC), 5, 1, mqttVals);
   } else {
     dtostrf(           targTmpC , 5, 1, mqttVals);
 	}		
-  wrapPubl( (const char * )ETmpTops , (const char * )mqttVals, 15 ); 
+  wrapPubl( (const char * )ETmpTops , (const char * )mqttVals, sizeof(mqttVals) ); 
   //
   if ( userScal == fahrScal) {
     dtostrf( floatCtoF(sensTmpC), 5, 1, mqttVals);
   } else {
     dtostrf(           sensTmpC , 5, 1, mqttVals);
 	}		
-  wrapPubl( (const char * )BTmpTops , (const char * )mqttVals, 15 ); 
+  wrapPubl( (const char * )BTmpTops , (const char * )mqttVals, sizeof(mqttVals) ); 
   //
   if ( userScal == fahrScal) {
     dtostrf( floatCtoF(profTmpC), 5, 1, mqttVals);
   } else {
     dtostrf(           profTmpC , 5, 1, mqttVals);
 	}		
-  wrapPubl( (const char * )PTmpTops , (const char * )mqttVals, 15 ); 
+  wrapPubl( (const char * )PTmpTops , (const char * )mqttVals, sizeof(mqttVals) ); 
   //
   dtostrf(             pwmdPcnt , 5, 1, mqttVals);
-  wrapPubl( (const char * )PwmdTops , (const char * )mqttVals, 15 ); 
+  wrapPubl( (const char * )PwmdTops , (const char * )mqttVals, sizeof(mqttVals) ); 
   //
   dtostrf( pidcUn, 8, 3, mqttVals);
-  wrapPubl( (const char * )UnTops, (const char * )(mqttVals), 15 ); 
+  wrapPubl( (const char * )UnTops, (const char * )(mqttVals), sizeof(mqttVals) ); 
   //
   dtostrf( pidcPn, 8, 3, mqttVals);
-  wrapPubl( (const char * )PnTops, (const char * )(mqttVals), 15 ); 
+  wrapPubl( (const char * )PnTops, (const char * )(mqttVals), sizeof(mqttVals) ); 
   //
   dtostrf( pidcDn, 8, 3, mqttVals);
-  wrapPubl( (const char * )DnTops, (const char * )(mqttVals), 15 ); 
+  wrapPubl( (const char * )DnTops, (const char * )(mqttVals), sizeof(mqttVals) ); 
   //
   dtostrf( pidcIn, 8, 3, mqttVals);
-  wrapPubl( (const char * )InTops, (const char * )(mqttVals), 15 ); 
+  wrapPubl( (const char * )InTops, (const char * )(mqttVals), sizeof(mqttVals) ); 
   //
   dtostrf( stepSecs, 8, 3, mqttVals);
-  wrapPubl( psecTops, (const char * )(mqttVals), 15 );
+  wrapPubl( psecTops, (const char * )(mqttVals), sizeof(mqttVals) );
   //
   //dtostrf( pidcElap, 8, 3, mqttVals);
   dtostrf( (100*(Epn-Epn1)), 8, 3, mqttVals);
-  wrapPubl( spreTops, (const char * )(mqttVals), 15 );
+  wrapPubl( spreTops, (const char * )(mqttVals), sizeof(mqttVals) );
   //
   //
   cb20Rctl &= ~RCTL_ATTN;
@@ -1040,32 +1055,32 @@ void cb50Svce() {
 	}	
   int rCode = 0;
   dtostrf( millis(), 8, 3, mqttVals);
-  //wrapPubl( c500Tops, (const char *)(mqttVals), 15 ); 
+  //wrapPubl( c500Tops, (const char *)(mqttVals), sizeof(mqttVals) ); 
   //
   dtostrf( pidcKp, 8, 3, mqttVals);
-  //wrapPubl( KpTops,   (const char *)(mqttVals), 15 ); 
+  //wrapPubl( KpTops,   (const char *)(mqttVals), sizeof(mqttVals) ); 
   //
   dtostrf( pidcTi, 8, 3, mqttVals);
-  //wrapPubl( TiTops,   (const char *)(mqttVals), 15 ); 
+  //wrapPubl( TiTops,   (const char *)(mqttVals), sizeof(mqttVals) ); 
   //
   dtostrf( pidcTd, 8, 3, mqttVals);
-  //wrapPubl( TdTops,   (const char *)(mqttVals), 15 ); 
+  //wrapPubl( TdTops,   (const char *)(mqttVals), sizeof(mqttVals) ); 
   //
   dtostrf( pidcBeta, 8, 3, mqttVals);
-  //wrapPubl( BetaTops, (const char * )(mqttVals), 15 ); 
+  //wrapPubl( BetaTops, (const char * )(mqttVals), sizeof(mqttVals) ); 
   //
   dtostrf( pidcGamma, 8, 3, mqttVals);
-  //wrapPubl( GammaTops, (const char * )(mqttVals), 15 ); 
+  //wrapPubl( GammaTops, (const char * )(mqttVals), sizeof(mqttVals) ); 
   //
   if ( userScal == fahrScal) {
     dtostrf( floatCtoF(profTmpC), 8, 3, mqttVals);
   } else {
     dtostrf(           profTmpC,  8, 3, mqttVals);
   }  
-  wrapPubl( (const char * )ptmpTops, (const char *)(mqttVals), 15 ); 
+  wrapPubl( (const char * )ptmpTops, (const char *)(mqttVals), sizeof(mqttVals) ); 
   //
   dtostrf( pwmdPcnt, 8, 3, mqttVals);
-  wrapPubl( (const char * )pcntTops, (const char *)(mqttVals), 15 ); 
+  wrapPubl( (const char * )pcntTops, (const char *)(mqttVals), sizeof(mqttVals) ); 
   //
   //if ( rCode) {
     //Serial.print("cb50Svce bad cuml RC: ");
@@ -1244,7 +1259,9 @@ void pidcLoop() {
     //
     if ( (pidcRctl & RCTL_RUNS)  == 0 ) {
       // Poll/Thermocouple == 0 Shutdown
-      Serial.println('pidc stop');
+      if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+        Serial.println('pidc stop');
+      }  
       Un = 0;
     } else {
       // 
@@ -1394,14 +1411,13 @@ void profLoop() {
         //Serial.println("profNmbr");
       }  
     } else {
-      // Default: No ramp, target setpoint temperature 
-      targTmpC = float(profTmpC);
+      // Default: No ramp, Do Not target setpoint, let userCmds do that  
+      // targTmpC = float(profTmpC);
       // Ramp to setpt temp and hold, Unless Manual Ramp 
       if (profCdpm != 0)  {
         if (profTmpC >= profTbeg)  {
           // User Ramp forces max temp, use Setpt after ramp setting for stop temp 
-          //if ((sensTmpC >=  targTmpC) && (stepSecs > 10) && (userDgpm == 0)) {
-          if ((sensTmpC >=  targTmpC) && (stepSecs > 10) ) {
+          if ((sensTmpC >=  profTmpC) && (stepSecs > 10) ) {
             profCdpm = 0;
             stepSecs = 0;
             bbrdTmde = bbrdHold;
@@ -1413,7 +1429,7 @@ void profLoop() {
         } else {
           // User Ramp forces min temp, use Setpt after ramp setting for stop temp 
           //if ((sensTmpC <= targTmpC) && (stepSecs > 10) && (userDgpm == 0)) {
-          if ((sensTmpC <= targTmpC) && (stepSecs > 10)) {
+          if ((sensTmpC <= profTmpC) && (stepSecs > 10)) {
             profCdpm = 0;
             stepSecs = 0;
             bbrdTmde = bbrdHold;
@@ -1469,7 +1485,7 @@ void profLoop() {
         if ((bbrdRctl & RCTL_DIAG) == RCTL_DIAG) {  
           pidcDbug();
         }  
-        Serial.println(" ");
+        //Serial.println(" ");
         // Rotswitch 
         //Serial.print("Rots: ");
         //Serial.print(rotsValu());
@@ -1652,10 +1668,12 @@ void rotsLoop() {
           case 0:
             profStep = 0;
             userCmdl = "W0";
+            strstr(userChrs, "W0");
           break;
           case 1:
             profStep = 1;
             userCmdl = "R10";
+            strstr(userChrs, "");
           break;
           case 2:
             profStep = 2;
@@ -1778,33 +1796,33 @@ void virtTcplLoop() {
   }  
 #endif
 // Ap16 0.200 total
-    pwmdMavg = int( 0.00 * heatInpu     \
-                 +  0.01 * heatHist[0]  \
-                 +  0.01 * heatHist[1]  \
-                 +  0.02 * heatHist[2]  \
-                 +  0.04 * heatHist[3]  \
-                 +  0.10 * heatHist[4]  \ 
-                 +  0.20 * heatHist[5]  \
-                 +  0.40 * heatHist[6]  \
-                 +  0.80 * heatHist[7]  \
-                 +  0.80 * heatHist[8]  \
-                 +  0.80 * heatHist[9]  \
-                 +  0.40 * heatHist[10] \
-                 +  0.30 * heatHist[11] \
-                 +  0.20 * heatHist[12] \
-                 +  0.10 * heatHist[13] \
-                 +  0.05 * heatHist[14] \
-                 +  0.02 * heatHist[15] \
-                 +  0.02 * heatHist[16] \
-                 +  0.02 * heatHist[17] \
-                 +  0.02 * heatHist[18] \
-                 +  0.01 * heatHist[19] \
+    pwmdMavg = int( 0.04 * heatInpu     \
+                 +  0.08 * heatHist[0]  \
+                 +  0.20 * heatHist[1]  \
+                 +  0.50 * heatHist[2]  \
+                 +  1.00 * heatHist[3]  \
+                 +  2.00 * heatHist[4]  \ 
+                 +  4.00 * heatHist[5]  \
+                 +  2.00 * heatHist[6]  \
+                 +  1.00 * heatHist[7]  \
+                 +  0.50 * heatHist[8]  \
+                 +  0.12 * heatHist[9]  \
+                 +  0.00 * heatHist[10] \
+                 +  0.00 * heatHist[11] \
+                 +  0.00 * heatHist[12] \
+                 +  0.00 * heatHist[13] \
+                 +  0.00 * heatHist[14] \
+                 +  0.00 * heatHist[15] \
+                 +  0.00 * heatHist[16] \
+                 +  0.00 * heatHist[17] \
+                 +  0.00 * heatHist[18] \
+                 +  0.00 * heatHist[19] \
                  +  0.00 * heatHist[20] \
-                 +  0.01 * heatHist[21] \
-                 +  0.01 * heatHist[22] \
-                 +  0.01 * heatHist[23] \
-                 +  0.01 * heatHist[24] \
-                 +  0.01 * heatHist[25] \
+                 +  0.00 * heatHist[21] \
+                 +  0.00 * heatHist[22] \
+                 +  0.00 * heatHist[23] \
+                 +  0.00 * heatHist[24] \
+                 +  0.00 * heatHist[25] \
                  +  0.00 * heatHist[26] \
                  +  0.00 * heatHist[27] \
                  +  0.00 * heatHist[28] \
@@ -1913,7 +1931,7 @@ void userSvce() {
   }  
 #if WIFI_MQTT
   // echo back network originated commands 
-  popcMqtt.publish( eCmdTops, userCmdl, 15); 
+  popcMqtt.publish( echoTops, userCmdl, sizeof(userCmdl)); 
 #endif  
   if ( bbrdRctl & RCTL_ARTI ) {
     if ((userCmdl[0] == 'C') && (userCmdl[1] == 'H') && (userCmdl[2] == 'A')) {
@@ -1926,7 +1944,7 @@ void userSvce() {
       if (userAIO3 > 99) userAIO3 = 100;
       //
       dtostrf( userDuty, 8, 3, mqttVals);
-      wrapPubl( (const char * )AIO3Tops , (const char * )mqttVals, 15 ); 
+      wrapPubl( (const char * )AIO3Tops , (const char * )mqttVals, sizeof(mqttVals) ); 
     }
     if ((userCmdl[0] == '0') && (userCmdl[1] == 'T') && (userCmdl[2] == '1')) {
       // Cmd : IO3 
@@ -1935,7 +1953,7 @@ void userSvce() {
       userDuty = userAOT1;
       //
       dtostrf( userAOT1, 8, 3, mqttVals);
-      wrapPubl( (const char * )AOT1Tops , (const char * )mqttVals, 15 ); 
+      wrapPubl( (const char * )AOT1Tops , (const char * )mqttVals, sizeof(mqttVals) ); 
     }
     if ((userCmdl[0] == '0') && (userCmdl[1] == 'T') && (userCmdl[2] == '2')) {
       // Cmd : IO3 
@@ -1943,10 +1961,11 @@ void userSvce() {
       if (userAOT2 > 99) userAOT2 = 100;
             //
       dtostrf( userDuty, 8, 3, mqttVals);
-      wrapPubl( (const char * )AOT2Tops , (const char * )mqttVals, 15 ); 
+      wrapPubl( (const char * )AOT2Tops , (const char * )mqttVals, sizeof(mqttVals) ); 
 
     }
     if ((userCmdl[0] == 'R') && (userCmdl[1] == 'E') && (userCmdl[2] == 'A')) {
+      bbrdArti();
       Serial.println(artiResp);
     }
     //  'unit' command, set user scale 
@@ -1961,13 +1980,14 @@ void userSvce() {
         // set desired temperatre degC
         userDegs = (userCmdl.substring(7)).toInt();
         if ( userScal == fahrScal) {
-          profTmpC = intgFtoC( userDegs); 
+          targTmpC = intgFtoC( userDegs); 
         } else {
-          profTmpC = userDegs;
+          targTmpC = userDegs;
         }
-        if (profTmpC > maxiTmpC) profTmpC = maxiTmpC;
-        profTbeg = int(sensTmpC);
-        stepSecs = 0;
+        if (targTmpC > maxiTmpC) targTmpC = maxiTmpC;
+        profCdpm = 0;                                     // Setting target temp implies no ramp 
+        //profTbeg = int(sensTmpC);
+        //stepSecs = 0;
         pwmdRctl &= ~RCTL_MANU;
         pwmdRctl |=  RCTL_AUTO;
       }  
@@ -1999,6 +2019,20 @@ void userSvce() {
   }
   if (((userCmdl[0] == 'F') || (userCmdl[0] == 'f')) && (userCmdl[1] != 'I')) {
     userScal = fahrScal;
+  }
+  if ((userCmdl[0] == 'H') || (userCmdl[0] == 'h')) {
+    // set desired hold temperatre deg
+    userDegs = (userCmdl.substring(1)).toInt();
+    if ( userScal == fahrScal) {
+      profTmpC = intgFtoC( userDegs); 
+    } else {
+      profTmpC = userDegs;
+    }
+    if (profTmpC > maxiTmpC) profTmpC = maxiTmpC;
+    // profTbeg = int(sensTmpC);
+    // stepSecs = 0;
+    pwmdRctl &= ~RCTL_MANU;
+    pwmdRctl |=  RCTL_AUTO;
   }
   if ((userCmdl[0] == 'I') || (userCmdl[0] == 'i')) {
     // Switch Off Artisan csv Logging, start popc 'Info' on Serial 
@@ -2040,13 +2074,15 @@ void userSvce() {
       profCdpm = userDgpm;
     }  
     profTbeg = int(sensTmpC);
-    stepSecs = 0;
     if (userDgpm > 0) profTmpC = maxiTmpC;
     if (userDgpm < 0) profTmpC = ambiTmpC;
     if (userDgpm == 0) {
       // Selected ROC 0: Hold current temp 
       bbrdTmde = bbrdHold;
-      profTmpC = int(sensTmpC);
+      targTmpC = int(sensTmpC);
+    } else {
+      // On R0 don't reset step timer 
+      stepSecs = 0;
     }
     // seting ramp unsets manual PWM width 
     pwmdRctl &= (~RCTL_MANU);
@@ -2057,16 +2093,15 @@ void userSvce() {
     }  
   }
   if ((userCmdl[0] == 'S') || (userCmdl[0] == 's')) {
-    // set desired temperatre degC
+    // set desired setpoint / immed target temperatre deg
     userDegs = (userCmdl.substring(1)).toInt();
     if ( userScal == fahrScal) {
-      profTmpC = intgFtoC( userDegs); 
+      targTmpC = intgFtoC( userDegs); 
     } else {
-      profTmpC = userDegs;
+      targTmpC = userDegs;
     }
-    if (profTmpC > maxiTmpC) profTmpC = maxiTmpC;
-    profTbeg = int(sensTmpC);
-    stepSecs = 0;
+    if (targTmpC > maxiTmpC) targTmpC = maxiTmpC;
+    profCdpm = 0;                                     // Setting target temp implies no ramp 
     pwmdRctl &= ~RCTL_MANU;
     pwmdRctl |=  RCTL_AUTO;
   }
@@ -2083,7 +2118,7 @@ void userSvce() {
     if ( userDuty == 0) {
       // Power off: Sense ambient ( fan htr pwr), temp setpt to meas ambient
       ambiTmpC = sensTmpC;
-      profTmpC = int(ambiTmpC);
+      // profTmpC = int(ambiTmpC);
       targTmpC = sensTmpC;
     }
     pwmdRctl &= ~RCTL_AUTO;
@@ -2252,6 +2287,9 @@ void loop() {
   offnLoop();
   rotsLoop();
   //
+  if (userRctl & RCTL_ATTN) {
+    userSvce();
+  }  
   userLoop();
   if (userRctl & RCTL_ATTN) {
     userSvce();
