@@ -27,14 +27,16 @@
 //  c  centigrade entry/display
 //  d  toggle diagnostic verbose messages on serial 
 //  f  fahrenhet entry / display, internals always are Centigrade 
+//  h  hold targ degs for time - temp ramps l 
 //  i  info strings and 'billboard' to serial 
 //  l  logging (artisan csv) to serial 
 //  p  profile (tbd)
 //  r  ramp C/F Degrees per minute, enter before target setpoint
-//  s  setPoint C/F temp 
+//  s  immed setPoint C/F temp 
+//  v  report version  
 //  w  pwm width override, disable PID
 //  y  tbd pwm freq Hz 
-//  z  reset total timecount
+//  z  reset all timecounts
 //
 //  Copyright (c) 2017 Bitwise Technologies  popc@bitwisetech.com  
 //
@@ -56,12 +58,12 @@
 //  Code section compiler switches - Rebuild and Upload after changing these 
 #define PROC_ESP      1                  // Compile for ESP8266
 #define WIFI_WMAN     0                  // Compile for Wifi Manager
-#define WIFI_MQTT     0                  // Compile for Wifi MQTT client
+#define WIFI_MQTT     1                  // Compile for Wifi MQTT client
 #define WIFI_SOKS     0                  // Compile for Wifi Web Sckt Srvr
 #define PROC_UNO      0                  // Compile for Arduino Uno
 #define WITH_LCD      0                  // Hdwre has I2C 2x16 LCD display
 #define WITH_MAX31855 0                  // Hdwre has thermocouple + circuit
-#define IFAC_ARTI     0                  // Start with Artisan interface on Serial
+#define IFAC_ARTI     1                  // Start with Artisan interface on Serial
 #define WITH_OFFN     0                  // Use ~4sec Off-On SSR, not fast PWM
 #define IFAC_FRNT     0                  // Obsolete Front/Process interface on Serial 
  
@@ -177,6 +179,7 @@ char artiResp[] = "023.0,128.8,138.8,000.0,000.0          ";  // 39 + null
 char bbrdLin0[] = "w100% r-123 128c"; 
 char bbrdLin1[] = "P0-0 S12.3m 228C";
 char bbrdHold  = 'H';                      // Prefix to decimal mins alternating with total time
+char bbrdManu  = 'M';
 char bbrdRamp  = 'R';
 char bbrdSetp  = 'S';
 char bbrdTmde;
@@ -231,10 +234,11 @@ const char inf1Tops[]  = "/popc/bbrdLin1";
 const char psecTops[]  = "/popc/stepSecs";
 const char dutyTops[]  = "/popc/pwmdPcnt";
 const char ptmpTops[]  = "/popc/profDegs";
-const char cdpmTops[]  = "/popc/sensCdpm";
+const char dgpmTops[]  = "/popc/sensDgpm";
 const char userTops[]  = "/popc/userCmdl";
 // Artisan interface UC names  'Read' Cmd; Send Ambient:Targ:Sens:Prof:Duty
 const char AmbiTops[]  = "/popc/arti/ATmp";
+const char ArspTops[]  = "/popc/arti/Read";
 const char ETmpTops[]  = "/popc/arti/ETmp";
 const char BTmpTops[]  = "/popc/arti/BTmp";
 const char PTmpTops[]  = "/popc/arti/PTmp";
@@ -323,7 +327,7 @@ float pidcPc, pidcIc, pidcDc       = 0.0; // cumulative P-I-D components
 float pidcUn = 0.0;                       // PID controller Output
 
 //
-const char versChrs[] = "17Jn17+ 2.40 3.33 0.060 Ap-Jn04 w diag Tcpl";
+const char versChrs[] = "18Je18 2.40 3.33 0.06 -veRamp and Htime   ";
 
 // pwmd vbls
 int  pwmdFreq, pwmdDuty, pwmdTarg, pwmdOutp;                          // Freq, Duty Cycle Target (255max) Output
@@ -534,19 +538,20 @@ void  bbrdArti() {
   //// Artisan Iface : resp 'READ' = Amb,Ch1,2,3,4 Amb,ET,BT,PT,PW
   //Je 15 to get SV/Duty into Config-Device-Extra TC4Ch3-4  send Amb ET, BT SV, D% 
   // Je15 Artisan Iface : resp 'READ' = Amb,Ch1,2,3,4 Ta,Te,Tb,Te,Du
-  if ( userScal == fahrScal) {
-    dtostrf( floatCtoF(ambiTmpC), 5, 1, &artiResp[0]  );
-    dtostrf( floatCtoF(targTmpC), 5, 1, &artiResp[6]  );
-    dtostrf( floatCtoF(sensTmpC), 5, 1, &artiResp[12] );
-    dtostrf( floatCtoF(targTmpC), 5, 1, &artiResp[18] );
-    dtostrf(           pwmdPcnt,  5, 1, &artiResp[24] );
+  if ( userScal == fahrScal) {                                
+    dtostrf( floatCtoF(ambiTmpC), 5, 1, &artiResp[0]  );         // Art's Ta Chn
+    dtostrf( floatCtoF(targTmpC), 5, 1, &artiResp[6]  );         //   Te 
+    dtostrf( floatCtoF(sensTmpC), 5, 1, &artiResp[12] );         //   Tb
+    //dtostrf( floatCtoF(targTmpC), 5, 1, &artiResp[18] );         //  Sv
+    dtostrf( int(sensCdpm * 9.00 / 5.00 + 50 ), 5, 1, &artiResp[18] ); //   SV  
   } else {
-    dtostrf(           ambiTmpC,  5, 1, &artiResp[0]  );
-    dtostrf(           targTmpC,  5, 1, &artiResp[6]  );
-    dtostrf(           sensTmpC,  5, 1, &artiResp[12] );
-    dtostrf(           targTmpC,  5, 1, &artiResp[18] );
-    dtostrf(           pwmdPcnt,  5, 1, &artiResp[24] );
+    dtostrf(           ambiTmpC,  5, 1, &artiResp[0]  );         //  Ta
+    dtostrf(           targTmpC,  5, 1, &artiResp[6]  );         //  Te
+    dtostrf(           sensTmpC,  5, 1, &artiResp[12] );         //  Tb
+    //dtostrf(           targTmpC,  5, 1, &artiResp[18] );         //  SV
+    dtostrf( int(sensCdpm + 50   ), 5, 1, &artiResp[18] );         //  SV
   } 
+  dtostrf(           pwmdPcnt,  5, 1, &artiResp[24] );             // Dy
   artiResp[5]  = ',';
   artiResp[11] = ',';
   artiResp[17] = ',';
@@ -625,7 +630,7 @@ void bbrdFill() {
   if ( totlSecs % 2 ) {
     bbrdLin1[5] = bbrdTmde;
   } else {
-    bbrdLin1[5] = 'P';
+    bbrdLin1[5] = 'T';
   }  
   bbrdLin1[8]   = '.';
   bbrdLin1[10]   = 'm';
@@ -648,7 +653,7 @@ void bbrdFill() {
         dtostrf( floatCtoF(sensTmpC),       5, 1, &artiResp[12] );
         dtostrf( floatCtoF(targTmpC),       5, 1, &artiResp[18] );
         //Je18 dtostrf( floatCtoF(profTmpC),5, 1, &artiResp[25] );
-        dtostrf( floatCtoF(sensCdpm + 50),  5, 1, &artiResp[25] ); // Arti scale offset
+        dtostrf( floatCtoF(sensCdpm * 9.0/5.0  + 50),  5, 1, &artiResp[25] ); // Arti scale offset
       } else {
         dtostrf(           sensTmpC,        5, 1, &artiResp[12] );
         dtostrf(           targTmpC,        5, 1, &artiResp[18] );
@@ -777,18 +782,17 @@ void lcdsInit() {
   lcd.print(F("@bitwisetech.com"));
   delay ( 2000 );                //  1000mS startup delay
   lcd.clear();
-  lcdsTogo  = LCDS_POLL_MSEC;     // lcd display    poll period mSec
+  lcdsTogo  = LCDS_POLL_MSEC - POLL_SLOP_MSEC;     // lcd display    poll period mSec
   lcdsPrev  =  millis();
 }
 
 void lcdsLoop() {
   currMSec = millis();
-  elapMSec = currMSec - lcdsPrev;
-  if (( lcdsTogo - POLL_SLOP_MSEC ) > elapMSec ) {
+  if ( lcdsTogo > (currMSec - lcdsPrev)) {
     return;
   } else {
-    lcdsPrev = millis();
-    lcdsTogo = LCDS_POLL_MSEC;
+    lcdsPrev = currMSec;
+    //Je18 lcdsTogo = LCDS_POLL_MSEC - POLL_SLOP_MSEC;
     //
     if (lcdstRctl == 0) {
       // Rctl == 0 Shutdown
@@ -830,7 +834,7 @@ void discCbck() {
     if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
       Serial.println("WIFI_MQTT timeout : wait cbck cted & call popcMqtt.Subs");
     }  
-    popcSubs();
+    // Je18 popcSubs();
   #endif  
 }
 
@@ -949,7 +953,7 @@ void wrapPubl( const char * tTops , const char * tVals, int tInt ) {
     Serial.print  (" RC : ");
     Serial.println(rCode);
   }
-  delay(100);
+  //delay(100);
 }    
 
 //
@@ -1027,12 +1031,21 @@ void cb20Svce() {
   wrapPubl( (const char * )ptmpTops , (const char * )mqttVals, sizeof(mqttVals) ); 
   wrapPubl( (const char * )PTmpTops , (const char * )mqttVals, sizeof(mqttVals) ); 
   //
-  dtostrf(             sensCdpm , 5, 1, mqttVals);
-  wrapPubl( (const char * )cdpmTops , (const char * )mqttVals, sizeof(mqttVals) ); 
+  if ( userScal == fahrScal) {
+    dtostrf(  sensCdpm  * 9.0/5.0 , 5, 1, mqttVals);
+  } else {
+    dtostrf(             sensCdpm , 5, 1, mqttVals);
+  }  
+  wrapPubl( (const char * )dgpmTops , (const char * )mqttVals, sizeof(mqttVals) ); 
   //
   dtostrf(             pwmdPcnt , 5, 1, mqttVals);
   wrapPubl( (const char * )dutyTops , (const char * )mqttVals, sizeof(mqttVals) ); 
   wrapPubl( (const char * )PwmdTops , (const char * )mqttVals, sizeof(mqttVals) ); 
+  wrapPubl( (const char * )ArspTops , (const char * )artiResp, sizeof(artiResp) ); 
+  //
+  dtostrf( pidcElap, 9, 3, mqttVals);
+  //dtostrf( (100*(Epn-Epn1)), 8, 3, mqttVals);
+  wrapPubl( spreTops, (const char * )(mqttVals), sizeof(mqttVals) );
   //
   if (0){
     dtostrf( pidcUn, 8, 3, mqttVals);
@@ -1046,10 +1059,6 @@ void cb20Svce() {
     //
     dtostrf( stepSecs, 8, 3, mqttVals);
     wrapPubl( psecTops, (const char * )(mqttVals), sizeof(mqttVals) );
-    //
-    //dtostrf( pidcElap, 8, 3, mqttVals);
-    dtostrf( (100*(Epn-Epn1)), 8, 3, mqttVals);
-    wrapPubl( spreTops, (const char * )(mqttVals), sizeof(mqttVals) );
     //
   }  
   //
@@ -1070,7 +1079,7 @@ void cb90Svce() {
   	Serial.println("cb90Svce");
 	}	
   int rCode = 0;
-  dtostrf( millis(), 8, 3, mqttVals);
+  dtostrf( pidcElap, 12, 3, mqttVals);
   wrapPubl( c900Tops, (const char *)(mqttVals), sizeof(mqttVals) ); 
   //
   dtostrf( pidcKp, 8, 3, mqttVals);
@@ -1121,7 +1130,7 @@ void wrapSubs( const char * tTops ) {
     Serial.print  (" RC : ");
     Serial.println(rCode);
   }
-  delay(100);
+  //delay(100);
 }    
 
 //
@@ -1139,7 +1148,7 @@ void popcSubs() {
 /// Off-On SSR driver 
 //
 void offnInit() {
-  offnTogo = OFFN_POLL_MSEC;   //  poll period mSec
+  offnTogo = OFFN_POLL_MSEC - POLL_SLOP_MSEC ;   //  poll period mSec
   offnPrev = millis();
   offnCntr = 0;
   pinMode( LED_ONBRD, OUTPUT);
@@ -1148,12 +1157,11 @@ void offnInit() {
 
 void offnLoop() {
   currMSec = millis();
-  elapMSec = currMSec - offnPrev;
-  if (( offnTogo - POLL_SLOP_MSEC ) > elapMSec ) {
+  if ( offnTogo > ( currMSec - offnPrev )) {
     return;
   } else {
-    offnPrev = millis();
-    offnTogo = OFFN_POLL_MSEC ;
+    offnPrev = currMSec;
+    //Je18 offnTogo = OFFN_POLL_MSEC - POLL_SLOP_MSEC  ;
     //
     if (!( offnRctl & RCTL_RUNS )) {
       return; 
@@ -1248,7 +1256,7 @@ void pidcInit() {
   Edfn2 = Edfn1 = Edfn = 0;
   // first time being enabled, seed with current property tree value
   Un1 = Un = 0;
-  pidcTogo = PIDC_POLL_MSEC;      // PID control poll period mSec
+  pidcTogo = PIDC_POLL_MSEC - POLL_SLOP_MSEC;      // PID control poll period mSec
   pidcPrev =  millis();
   targTmpC = int(ambiTmpC);
 }
@@ -1256,19 +1264,17 @@ void pidcInit() {
 //
 void pidcLoop() {
   currMSec = millis();
-  elapMSec = currMSec - pidcPrev;
-  if (( pidcTogo - POLL_SLOP_MSEC ) > elapMSec ) {
+  pidcElap = currMSec - pidcPrev;
+  if ( pidcTogo > pidcElap ) {
     return;
   } else {
     // save this currMSec as time of service
-    //pidcPrev = currMSec;
+    pidcPrev = currMSec;
     // Adjusting with elapMSec errors after init when 8secs elapse  time togo  
     //pidcTogo = 2 * PIDC_POLL_MSEC - elapMSec;
-    pidcElap = elapMSec;
-    pidcPrev = millis();
-    pidcTogo = PIDC_POLL_MSEC;
+    //Je18 pidcTogo = PIDC_POLL_MSEC - POLL_SLOP_MSEC;
     //Serial.print("pidc ");
-    //Serial.println( elapMSec);
+    //Serial.println( pidcElap);
     //
     if ( (pidcRctl & RCTL_RUNS)  == 0 ) {
       // Poll/Thermocouple == 0 Shutdown
@@ -1279,7 +1285,7 @@ void pidcLoop() {
     } else {
       // 
       //Ts = (PIDC_POLL_MSEC - (float)pidcTogo) / 1000000.0; // sample interval (Sec)
-      Ts = (float)elapMSec / 1000.0;
+      Ts = (float)pidcElap / 1000.0;
       // 
       pidcRn = (float)targTmpC;
       pidcYn = (float)sensTmpC;
@@ -1401,18 +1407,17 @@ void profInit() {
   // simulation
   prevTmpC = sensTmpC = profTmpC = int(ambiTmpC);
   stepSecs = totlSecs = 0;
-  profTogo = PROF_POLL_MSEC;   //  poll period mSec
+  profTogo = PROF_POLL_MSEC - POLL_SLOP_MSEC;   //  poll period mSec
   profPrev =  millis();
 }
 
 void profLoop() {
   currMSec = millis();
-  elapMSec = currMSec - profPrev;
-  if (( profTogo - POLL_SLOP_MSEC ) > elapMSec ) {
+  if ( profTogo >  (currMSec - profPrev)) {
     return;
   } else {
-    profPrev = millis();
-    profTogo = PROF_POLL_MSEC ;
+    profPrev = currMSec;
+    //Je18 profTogo = PROF_POLL_MSEC - POLL_SLOP_MSEC;
     // update billboard
     bbrdFill();
     // prevent lcd rollover; 6000 secs == 100 min 
@@ -1432,7 +1437,7 @@ void profLoop() {
           // User Ramp forces max temp, use Setpt after ramp setting for stop temp 
           if ((sensTmpC >=  profTmpC) && (stepSecs > 10) ) {
             profCdpm = 0;
-            stepSecs = 0;
+            //Je 18 stepSecs = 0;
             bbrdTmde = bbrdHold;
           } else {
             bbrdTmde = bbrdRamp;
@@ -1444,7 +1449,7 @@ void profLoop() {
           //if ((sensTmpC <= targTmpC) && (stepSecs > 10) && (userDgpm == 0)) {
           if ((sensTmpC <= profTmpC) && (stepSecs > 10)) {
             profCdpm = 0;
-            stepSecs = 0;
+            //Je18 stepSecs = 0;
             bbrdTmde = bbrdHold;
           } else {
             bbrdTmde = bbrdRamp;
@@ -1453,13 +1458,13 @@ void profLoop() {
           }  
         }
       } 
-      if ((profCdpm == 0) && (userDgpm == 0)) {
-        // ramp==0: target temp  unchanged
-        profCdpm = 0;
-        // StepSecs shows time in either Setpoint of Hold after ramp 
-        //stepSecs = 0;
-        bbrdTmde = bbrdSetp;
-      }
+    }
+    if ((profCdpm == 0) && (userDgpm == 0)) {
+      // user calls for ramp==0 ( not holdPt): target temp  unchanged
+      //profCdpm = 0;
+      // StepSecs shows time in either Setpoint of Hold after ramp 
+      //stepSecs = 0;
+      bbrdTmde = bbrdSetp;
     }
     // Run exp mavg 5 second apart temp change 
     // ROC degrees per min is 60 * avg per second change 
@@ -1586,18 +1591,17 @@ void pwmdInit() {
   pwmdExpo(10);
   pinMode( PWMD_OPIN, PWMD_MODE);
   #endif
-  pwmdTogo  = PWMD_POLL_MSEC;       // pwm drvr poll period mSec
+  pwmdTogo  = PWMD_POLL_MSEC - POLL_SLOP_MSEC;       // pwm drvr poll period mSec
   pwmdPrev  =  millis();            // pwm drvr poll period mSec
 }
 
 void pwmdLoop() {
   currMSec = millis();
-  elapMSec = currMSec - pwmdPrev;
-  if (( pwmdTogo - POLL_SLOP_MSEC ) > elapMSec ) {
+  if ( pwmdTogo > (currMSec - pwmdPrev)) {
     return;
   } else {
-    pwmdPrev = millis();
-    pwmdTogo = PWMD_POLL_MSEC;
+    pwmdPrev = currMSec;
+    //Je18 pwmdTogo = PWMD_POLL_MSEC - POLL_SLOP_MSEC;
     //
     if (pwmdRctl == 0) {
       if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
@@ -1650,18 +1654,17 @@ void rotsInit() {
   pinMode( ROTS_BIT2, INPUT_PULLUP);
   pinMode( ROTS_BIT1, INPUT_PULLUP);
   pinMode( ROTS_BIT0, INPUT_PULLUP);
-  rotsTogo = ROTS_POLL_MSEC;   //  poll period mSec
+  rotsTogo = ROTS_POLL_MSEC - POLL_SLOP_MSEC ;   //  poll period mSec
   rotsPrev =  millis();
 }
     
 void rotsLoop() {
   currMSec = millis();
-  elapMSec = currMSec - rotsPrev;
-  if (( rotsTogo - POLL_SLOP_MSEC ) > elapMSec ) {
+  if ( rotsTogo > (currMSec - rotsPrev)) {
     return;
   } else {
-    rotsPrev = millis();
-    rotsTogo = ROTS_POLL_MSEC;
+    rotsPrev = currMSec;
+    //Je18rotsTogo = ROTS_POLL_MSEC - POLL_SLOP_MSEC ;
     // Only process consecutive new steady value 
     byte rotsTemp = rotsValu();
     if ( rotsTemp != rotsNewb) {
@@ -1754,10 +1757,10 @@ void rotsLoop() {
 /// THERMOCOUPLE
 // 
 void tcplInit() {
-  tcplTogo  = TCPL_POLL_MSEC;       // thermocouple norm poll period mSec
+  tcplTogo  = TCPL_POLL_MSEC - POLL_SLOP_MSEC;       // thermocouple norm poll period mSec
   // stabilize wait .. lcds banner is 1000mA anyway
   // delay(500);
-  vtcpTogo = VTCP_POLL_MSEC;      // PID control poll period mSec
+  vtcpTogo = VTCP_POLL_MSEC - POLL_SLOP_MSEC;      // PID control poll period mSec
   tcplPrev = vtcpPrev = millis();
   sensTmpC = ambiTmpC;
 }
@@ -1766,12 +1769,11 @@ void virtTcplLoop() {
   int pwmdMavg;
   float heatInpu = 0; 
   currMSec = millis();
-  elapMSec = currMSec - vtcpPrev;
-  if (( vtcpTogo - POLL_SLOP_MSEC ) > elapMSec ) {
+  if (( vtcpTogo ) > (currMSec - vtcpPrev)) {
     return;
   } else {
-    vtcpPrev = millis();
-    vtcpTogo = VTCP_POLL_MSEC;
+    vtcpPrev = currMSec;
+    //Je18 vtcpTogo = VTCP_POLL_MSEC - POLL_SLOP_MSEC;
     // virt tcpl 
     if ( offnRctl & RCTL_AUTO) {
       if (offnRctl & RCTL_ATTN ) {
@@ -1810,24 +1812,24 @@ void virtTcplLoop() {
 #endif
 // Ap16 0.200 total
     pwmdMavg = int( 0.00 * heatInpu     \
-                 +  0.01 * heatHist[0]  \
-                 +  0.05 * heatHist[1]  \
-                 +  1.00 * heatHist[2]  \
-                 +  2.00 * heatHist[3]  \
-                 +  3.20 * heatHist[4]  \ 
-                 +  1.60 * heatHist[5]  \
-                 +  0.75 * heatHist[6]  \
-                 +  0.30 * heatHist[7]  \
+                 +  0.00 * heatHist[0]  \
+                 +  0.01 * heatHist[1]  \
+                 +  0.01 * heatHist[2]  \
+                 +  0.01 * heatHist[3]  \
+                 +  0.02 * heatHist[4]  \ 
+                 +  0.05 * heatHist[5]  \
+                 +  0.10 * heatHist[6]  \
+                 +  0.10 * heatHist[7]  \
                  +  0.20 * heatHist[8]  \
-                 +  0.01 * heatHist[9]  \
-                 +  0.00 * heatHist[10] \
-                 +  0.00 * heatHist[11] \
-                 +  0.00 * heatHist[12] \
-                 +  0.00 * heatHist[13] \
-                 +  0.00 * heatHist[14] \
-                 +  0.00 * heatHist[15] );
+                 +  0.50 * heatHist[9]  \
+                 +  0.50 * heatHist[10] \
+                 +  0.20 * heatHist[11] \
+                 +  0.20 * heatHist[12] \
+                 +  0.10 * heatHist[13] \
+                 +  0.05 * heatHist[14] \
+                 +  0.02 * heatHist[15] );
     sensTmpC = sensTmpC + float(pwmdMavg) / 255.0 \
-                 -  (sensTmpC - ambiTmpC) / 24.0;
+                 -  (sensTmpC - ambiTmpC) / 100.0;
 //                 
     heatHist[15] = heatHist[14]; 
     heatHist[14] = heatHist[13]; 
@@ -1852,12 +1854,11 @@ void virtTcplLoop() {
 void tcplRealLoop() {
   double tcplTmpC;
   currMSec = millis();
-  elapMSec = currMSec - tcplPrev;
-  if (( tcplTogo - POLL_SLOP_MSEC ) > elapMSec ) {
+  if ( tcplTogo ) > (currMSec - tcplPrev)) {
     return;
   } else {
-    tcplPrev = millis();
-    tcplTogo = TCPL_POLL_MSEC;
+    tcplPrev = currMSec;
+    //Je18 tcplTogo = TCPL_POLL_MSEC - POLL_SLOP_MSEC;
     //
     if (tcplRctl== 0) {
       // Rctl == 0 Shutdown
@@ -2070,6 +2071,8 @@ void userSvce() {
     // Toggle logging, preface with banner lines when logging started 
     if ( bbrdRctl & RCTL_INFO ) {
       // Artisan csv Logging: send two header lines with tab chars
+      // prefix with version 
+      Serial.println(versChrs);
       Serial.println(csvlLin1); 
       Serial.println(csvlLin2); 
       // Switch On  Artisan csv Logging. TotalTime, StepTime must start at 0. 
@@ -2124,6 +2127,7 @@ void userSvce() {
     }
     if (targTmpC > maxiTmpC) targTmpC = maxiTmpC;
     profCdpm = userDgpm = 0;          // Setting target temp implies no ramp 
+    stepSecs = 0;                     // User command: reset step timer 
     pwmdRctl &= ~RCTL_MANU;
     pwmdRctl |=  RCTL_AUTO;
   }
@@ -2143,7 +2147,10 @@ void userSvce() {
       //ambiTmpC = sensTmpC;
       // profTmpC = int(ambiTmpC);
       targTmpC = sensTmpC;
+    } else {
+      stepSecs = 0;                   // User command: reset step timer 
     }
+    bbrdTmde = bbrdManu;
     pwmdRctl &= ~RCTL_AUTO;
     pwmdRctl |=  RCTL_MANU;
     // manual pwm will apply in pwmd loop; unset manual ramp ctrl 
@@ -2158,6 +2165,7 @@ void userSvce() {
   if ((userCmdl[0] == 'Z') || (userCmdl[0] == 'z')) {
     // Zero 'Total Time' 
     totlSecs = 0;
+    stepSecs = 0;                   // User command: reset step timer 
   }
   // For debug to see if Artisan is setting Unit C/F 
   if ((userCmdl[0] == '?')) {
@@ -2329,5 +2337,4 @@ void loop() {
 #endif 
   //frntLoop();
   // Why delay(10);
-  delay(10);
 }
