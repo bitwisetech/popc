@@ -36,19 +36,19 @@
 // 
 //  Command & LCD Indicators; Upcase: User Set; LowCase: Auto/Sensed/Readback value 
 //  a/A     Toggle run time interface to Artisan 
-//  b/Bff   Readback / Set PID Beta parameter (Float; Expert only ! )  
+//  Bff     Set PID Beta parameter (Float; Expert only ! )  
 //  c/C     Set centigrade units; LCD display actual/target temp
 //  d/D     toggle diagnostic verbose messages on serial 
 //  e/E     Readback / Update EEPROM PID parameters 
 //  f/F     Set fahrenheit units; LCD display actual/target temp
-//  g/Gff   Readback / Set PID Gamma parameter (Float; Expert only ! )  
+//  Gff     Set PID Gamma parameter (Float; Expert only ! )  
 //  h/H     Set hold temperature setpoint fore ramp endpoint ( soak temp )
-//  i/Iff   Set PID I-Term time (Float Ti: lower value == higher gain)
-//  j/Jff   Set PID D-Term gain (Float Td: lower value == lower  gain)
-//  k/Kff   Set PID Gain TComp  (Float Kappa: 0 == no Temp comp)
+//  Iff     Set PID I-Term time (Float Ti: lower value == higher gain)
+//  Jff     Set PID D-Term gain (Float Td: lower value == lower  gain)
+//  Kff     Set PID Gain TComp  (Float Kappa: 0 == no Temp comp)
 //  l/L     Send Artisan CSV format on serial ( for capture and Artisan Import )  
 //  o       Readback PIDC operating (not eeprom) parameters 
-//  p/Pff   Readback / Set PID P-Term gain (Float Kp: lower value == lower  gain)
+//  Pff     Readback / Set PID P-Term gain (Float Kp: lower value == lower  gain)
 //  mn/MN   Reserved for TBD Profile handling 
 //  rnn/Rnn Set Temperature Ramp C/F Deg per min (Set before hold temp) 
 //  snn/Snn Set immediate target setPoint C/F temperature  
@@ -159,7 +159,7 @@ __asm volatile ("nop");
 //  Mqtt
 #if WIFI_MQTT
 #include <MQTT.h>
-#define MQCL_ID "pipc"
+#define MQCL_ID "popc"
 #endif
 //
 // wifi Replace with your own network's SSID, Password
@@ -176,7 +176,7 @@ const char* upwdPwrd = "manchester1102190tan";
 //
 // wifiManager.autoConnect("upwdSsid", "password");
 //
-const char* dnwdSsid = "espipc8101";
+const char* dnwdSsid = "espopc8101";
 //
 const char* dnwdPwrd = "summerseat";
 //
@@ -261,43 +261,44 @@ LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  // Set the LCD I
 // mqtt strings are declared for both ESP8266 and UNO 
 char mqttVals[] =  "                ";                     // mqtt value 16sp 15ch max
 // General Info topics 
-const char c900Tops[]  = "/pipc/cbck9000";
-const char echoTops[]  = "/pipc/echoCmdl";
-const char inf0Tops[]  = "/pipc/bbrdLin0";
-const char inf1Tops[]  = "/pipc/bbrdLin1";
-const char psecTops[]  = "/pipc/stepSecs";
-const char dutyTops[]  = "/pipc/pwmdPcnt";
-const char ptmpTops[]  = "/pipc/profDegs";
-const char dgpmTops[]  = "/pipc/sensDgpm";
-const char userTops[]  = "/pipc/userCmdl";
+const char c900Tops[]  = "/popc/cbck9000";
+const char echoTops[]  = "/popc/echoCmdl";
+const char inf0Tops[]  = "/popc/bbrdLin0";
+const char inf1Tops[]  = "/popc/bbrdLin1";
+const char psecTops[]  = "/popc/stepSecs";
+const char dutyTops[]  = "/popc/pwmdPcnt";
+const char ptmpTops[]  = "/popc/profDegs";
+const char dgpmTops[]  = "/popc/sensDgpm";
+const char userTops[]  = "/popc/userCmdl";
 // Artisan interface UC names  'Read' Cmd; Send Ambient:Targ:Sens:Prof:Duty
-const char AmbiTops[]  = "/pipc/arti/ATmp";
-const char ArspTops[]  = "/pipc/arti/Read";
-const char ETmpTops[]  = "/pipc/arti/ETmp";
-const char BTmpTops[]  = "/pipc/arti/BTmp";
-const char PTmpTops[]  = "/pipc/arti/PTmp";
-const char PwmdTops[]  = "/pipc/arti/Pwmd";
-const char AOT1Tops[]  = "/pipc/arti/AOT1";
-const char AOT2Tops[]  = "/pipc/arti/AOT2";
-const char AIO3Tops[]  = "/pipc/arti/AIO3";
+const char AmbiTops[]  = "/popc/arti/ATmp";
+const char ArspTops[]  = "/popc/arti/Read";
+const char ETmpTops[]  = "/popc/arti/ETmp";
+const char BTmpTops[]  = "/popc/arti/BTmp";
+const char PTmpTops[]  = "/popc/arti/PTmp";
+const char PwmdTops[]  = "/popc/arti/Pwmd";
+const char AOT1Tops[]  = "/popc/arti/AOT1";
+const char AOT2Tops[]  = "/popc/arti/AOT2";
+const char AIO3Tops[]  = "/popc/arti/AIO3";
 // PID controller topics
-const char RnTops[]    = "/pipc/pidc/Rn";
-const char YnTops[]    = "/pipc/pidc/Yn";
-const char EnTops[]    = "/pipc/pidc/En";
-const char UnTops[]    = "/pipc/pidc/Un";
-const char PnTops[]    = "/pipc/pidc/Pn";
-const char InTops[]    = "/pipc/pidc/In";
-const char DnTops[]    = "/pipc/pidc/Dn";
-const char KpTops[]    = "/pipc/pidc/Kp";
-const char TdTops[]    = "/pipc/pidc/Td";
-const char TiTops[]    = "/pipc/pidc/Ti";
-const char BetaTops[]  = "/pipc/pidc/Beta";
-const char GammaTops[] = "/pipc/pidc/Gamma";
-const char TlapTops[]  = "/pipc/pidc/LoopMillis";
+const char RnTops[]    = "/popc/pidc/Rn";
+const char YnTops[]    = "/popc/pidc/Yn";
+const char EnTops[]    = "/popc/pidc/En";
+const char UnTops[]    = "/popc/pidc/Un";
+const char PnTops[]    = "/popc/pidc/Pn";
+const char InTops[]    = "/popc/pidc/In";
+const char DnTops[]    = "/popc/pidc/Dn";
+const char KpTops[]    = "/popc/pidc/Kp";
+const char TdTops[]    = "/popc/pidc/Td";
+const char TiTops[]    = "/popc/pidc/Ti";
+const char BetaTops[]  = "/popc/pidc/Beta";
+const char GammaTops[] = "/popc/pidc/Gamma";
+const char TlapTops[]  = "/popc/pidc/LoopMillis";
 
 //eprm
 float fromEprm;
 int eprmSize, eprmFree;
+// Addresses at end of EEPROM for saved PID parameters
 #define EADX_KP (eprmSize - 1 * (sizeof(float)))
 #define EADX_TI (eprmSize - 2 * (sizeof(float)))
 #define EADX_TD (eprmSize - 3 * (sizeof(float)))
@@ -2219,14 +2220,10 @@ void userSvce() {
       Serial.println("# Serial  <=> Artisan");
     }
   }
-  // b/B  put/get pidc Beta term 
+  // B  put pidc Beta term 
   if (userCmdl[0] == 'B') {
     pidcBeta = (userCmdl.substring(1)).toFloat();
     //EEPROM.put( EADX_BE, pidcBeta);
-  }
-  if (userCmdl[0] == 'b') {
-    Serial.print(F("Be: "));
-    Serial.println(pidcBeta);
   }
   //  c/C set Centigrade units 
   if (((userCmdl[0] == 'C') || (userCmdl[0] == 'c')) && (userCmdl[1] != 'H')) {
@@ -2277,14 +2274,10 @@ void userSvce() {
   if (((userCmdl[0] == 'F') || (userCmdl[0] == 'f')) && (userCmdl[1] != 'I')) {
     userScal = fahrScal;
   }
-  // G/g  put/get pid Gamma term 
+  // G  put pid Gamma term 
   if (userCmdl[0] == 'G') {
     pidcGamma = (userCmdl.substring(1)).toFloat();
     //EEPROM.put( EADX_GA, pidcGamma);
-  }
-  if (userCmdl[0] == 'g') {
-    Serial.print(F("Gamma: "));
-    Serial.println(pidcGamma);
   }
   if ((userCmdl[0] == 'H') || (userCmdl[0] == 'h')) {
     // set desired hold temperatre deg
@@ -2300,16 +2293,16 @@ void userSvce() {
     pwmdRctl &= ~RCTL_MANU;
     pwmdRctl |=  RCTL_AUTO;
   }
-  // I/i  put/get pid Ti term 
-  if ((userCmdl[0] == 'i') || (userCmdl[0] == 'I')) {
+  // I  put pid Ti term 
+  if (userCmdl[0] == 'I') {
     pidcTi = (userCmdl.substring(1)).toFloat();
   }
-  // j/J put pid Td term 
-  if ((userCmdl[0] == 'j') || (userCmdl[0] == 'J')) {
+  // J put pid Td term 
+  if (userCmdl[0] == 'J') {
     pidcTd = (userCmdl.substring(1)).toFloat();
   }
-  // k/K put pid Kappa term 
-  if ((userCmdl[0] == 'k') || (userCmdl[0] == 'K')) {
+  // K put pid Kappa term 
+  if (userCmdl[0] == 'K') {
     pidcKappa = (userCmdl.substring(1)).toFloat();
   }
   if ((userCmdl[0] == 'm') || (userCmdl[0] == 'M')) {
@@ -2320,7 +2313,7 @@ void userSvce() {
     }  
     stepSecs = 0;
   }
-  // p/P  put pid Kp term 
+  // P  put pid Kp term 
   if ((userCmdl[0] == 'p') || (userCmdl[0] == 'P')) {
     pidcKp = (userCmdl.substring(1)).toFloat();
   }
@@ -2465,7 +2458,7 @@ void setup() {
     //Jn01 
     //WiFiManager wifiManager; //   Also in the setup function add
     //set custom ip for portal
-    ////wifiManager.setAPStaticIPConfig(IPAddress(172,20,224,120), IPAddress(172,20,224,120), IPAddress(255,255,255,0));
+    ////wifiManager.setAPStaticIPConfig(IPAddress(10,0,1,1), IPAddress(10,0,1,1), IPAddress(255,255,255,0));
     //first parameter is name of access point, second is the password
     if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
       Serial.println("WIFI_WMAN : init call popcMqtt.autoConnect");
