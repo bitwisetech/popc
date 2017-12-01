@@ -47,13 +47,18 @@
 //  Jff     Set PID D-Term gain (Float Td: lower value == lower  gain)
 //  Kff     Set PID Gain TComp  (Float Kappa: 0 == no Temp comp)
 //  l/L     Send Artisan CSV format on serial ( for capture and Artisan Import )  
+//  m/M     Spare
+//  n/N     Spare
 //  o       Readback PIDC operating (not eeprom) parameters 
 //  Pff     Readback / Set PID P-Term gain (Float Kp: lower value == lower  gain)
-//  mn/MN   Reserved for TBD Profile handling 
+//  q/Q     Spare
 //  rnn/Rnn Set Temperature Ramp C/F Deg per min (Set before hold temp) 
 //  snn/Snn Set immediate target setPoint C/F temperature  
+//  t/T     Spare
+//  u/U     Spare
 //  v/V     Readback firmware version, PID, EEPROM parms to serial 
 //  wnn/Wnn Set PWM Duty Cycle nn <= 100, disable PID
+//  x/X     Spare
 //  y/Y     Set PWM Frequency Hz (TBD)  
 //  z/Z     Zero reset all timecounts
 //
@@ -80,8 +85,9 @@
 #define WIFI_MQTT     0                  // Compile for Wifi MQTT client
 #define WIFI_SOKS     0                  // Compile for Wifi Web Sckt Srvr
 #define PROC_UNO      1                  // Compile for Arduino Uno
-#define WITH_LCD      1                  // Hdwre has I2C 2x16 LCD display
+#define WITH_LCD      0                  // Hdwre has I2C 2x16 LCD display
 #define WITH_MAX31855 1                  // Hdwre has thermocouple + circuit
+#define WITH_PCF8574  1                  // Hdwre has I2C I/O Extender      
 #define IFAC_ARTI     0                  // Start with Artisan interface on Serial
 #define WITH_OFFN     0                  // Use ~4sec Off-On SSR, not fast PWM
 #define IFAC_FRNT     0                  // Obsolete Front/Process interface on Serial 
@@ -203,10 +209,10 @@ WebSocketsServer webSocket = WebSocketsServer(5981);
 
 /// Declarations by unit
 
-// 40+ char Used for Artisan: ambient, ch1, ch2, ch3, ch4 or Logging Tt Ts BT ET SV Duty on serial 
+// 40+ char Artisan serial pkt: ambient, ch1, ch2, ch3, ch4 or Logging Tt Ts BT ET SV Duty
 char artiResp[] = "023.0,128.8,138.8,000.0,000.0          ";  // 39 + null
 
-// billboard  Legend Lower cases: computed/Measured Upper case: User/Setpoints 
+// billboard string for LCD + Serial  Lower cases: computed/measured Upper case: User/Setpoints 
 char bbrdLin0[] = "w100% r-123 128c"; 
 char bbrdLin1[] = "P0-0 S12.3m 228C";
 char bbrdHold   = 'H';                      // Prefix to decimal mins alternating with total time
@@ -224,7 +230,7 @@ float   ambiTmpC  = 28;                    //  28C  82F rm temp then W0 + fan ht
 #define idleTmpC    50                     //  50C temp with W0 due to fan heater coil  
 #define maxiTmpC    248                    // 248C 480F as maximum temp 
 
-// Theese two lines must contain tab chars, not spaces
+// Artisan csv header format: these two lines must contain tab chars, not spaces
 const char csvlLin1[] = "Date:	Unit:C	CHARGE:	TP:	DRYe:	FCs:	FCe:	SCs:	SCe:	DROP:	COOL:	Time:";
 const char csvlLin2[] = "Time1	Time2	BT	ET	Event	SV	DUTY";
 
@@ -285,14 +291,12 @@ const char RnTops[]    = "/popc/pidc/Rn";
 const char YnTops[]    = "/popc/pidc/Yn";
 const char EnTops[]    = "/popc/pidc/En";
 const char UnTops[]    = "/popc/pidc/Un";
-const char PnTops[]    = "/popc/pidc/Pn";
-const char InTops[]    = "/popc/pidc/In";
-const char DnTops[]    = "/popc/pidc/Dn";
 const char KpTops[]    = "/popc/pidc/Kp";
 const char TdTops[]    = "/popc/pidc/Td";
 const char TiTops[]    = "/popc/pidc/Ti";
 const char BetaTops[]  = "/popc/pidc/Beta";
 const char GammaTops[] = "/popc/pidc/Gamma";
+const char KappaTops[] = "/popc/pidc/Kappa";
 const char TlapTops[]  = "/popc/pidc/LoopMillis";
 
 //eprm
@@ -317,27 +321,6 @@ float pidcTd      =   0.200;              // D-Term Gain sec ( Td++ = Gain++)
 //Ap15
 // Fast response PID to match approx 30Hz PWM frequency 
 //  Date  Kp      Ti      Td      Beta      Gamma 
-//  Ap15  4.000   2.000   0.010
-//        8.000   8.000   0.002
-//        6.000  10.000   0.002
-//       10.000  12.000   0.002       
-//  Ap22  3.000   8.000   4.000
-//  My01  1.500   6.000   0.600   2.000     0.400
-// My4-1  2.000   6.000   1.000   4.000     0.200
-// My4-2  1.000   4.000   1.000   2.000     0.400
-// My4-3  1.000   5.000   2.000   2.000     0.400
-// My4-4  0.800   4.000   2.000   2.000     0.400
-// My07   1.000   4.000   1.000   2.000     0.400 
-// My09   1.000   6.000   0.100   1.000     1.000 
-// My11   1.200   5.000   0.100   1.000     1.000  Did not download 
-// My11   2.000   5.000   0.050   1.000     1.000  Still lags / oshoots
-// My24   3.000   6.000   0.750   1.000     1.000  PWM oscillates              
-// My25   2.000   5.000   0.050   1.000     1.000  Still lags / oshoots
-// Jn01   2.250   4.000   0.100   1.000     1.000  Migs-Furn High osht then drop 
-// Jn01   1.800   5.000   0.050   1.000     1.000  Braz-Furn BSF Still osc
-// Jn01   2.000   4.000   0.025   1.000     1.000  Jn02-Vuid
-// Jn01   3.600  10.000   0.025   1.000     1.000  not installed           
-// Jn02   3.000   8.000   0.025   1.000     1.000  Jn03-Furn Osc grows     
 // Jn04   2.400   8.000   0.025   1.000     1.000  Jn04-Migs-Furn BBSF     
 // Jn04++ Kp applies only to Pn no more to Ti, Td 
 //           comp: Rdce Ti, Incr Td by Kp       
@@ -351,17 +334,20 @@ float pidcTd      =   0.200;              // D-Term Gain sec ( Td++ = Gain++)
 // 17Je22 2.50 3.00 0.005 1.0 1.0 Je22
 // 17Au04 4.00 2.00 0.005 1.0 1.0 Je22
 // 17Au31 2.00 2.00 1.000 2.0 1.0 0.25 Kappa comp 
+// 17Se02 2.00 2.00 0.250 2.0 1.0 0.25 Overshoots S80->s180 Reduce Td  
+// 17Se02 2.50 2.50 0.250 2.0 1.0 0.20 Less area at OShoot? Inc Kp, Ti, Ka
+// 17Se15 2.50 4.00 0.250 2.0 1.0 0.20 Attempt
 //
-float pidcKp    =   2.000;              // P-Term gain
-float pidcKc    =   2.000;              // P-Term gain
-float pidcTi    =   2.000;              // I-Term Gain sec ( Ti++ = Gain--)
-float pidcTd    =   1.000;              // D-Term Gain sec ( Td++ = Gain++)
+float pidcKp    =   2.500;                // P-Term gain
+float pidcKc    =   2.500;                // P-Term gain
+float pidcTi    =   4.000;                // I-Term Gain sec ( Ti++ = Gain--)
+float pidcTd    =   0.250;                // D-Term Gain sec ( Td++ = Gain++)
 #endif
 //
 float pidcBeta    =   2.000;              // P-term Refr vs YInp
 float pidcGamma   =   1.000;              // D-term Refr vs YInp
 float pidcAlpha   =   0.100;              // D-term Filter time
-float pidcKappa   =   0.250;              // Ambient comp Kp * ( 1 + Ka (sens - idle)/idle )
+float pidcKappa   =   0.200;              // Ambient comp Kp * ( 1 + Ka (sens - idle)/idle )
 //
 float pidcRn      =  ambiTmpC;            // Refr setpoint
 float pidcYn      =  ambiTmpC;            // YInp input
@@ -375,16 +361,37 @@ float pidcPn, pidcIn, pidcDn       = 0.0; // per sample P-I-D-Err Terms
 float pidcPc, pidcIc, pidcDc       = 0.0; // cumulative P-I-D components 
 float pidcUn = 0.0;                       // PID controller Output
 
+// 
+const char versChrs[] = "2017SSe15";
+
+// profiles
+//   stored as profiles 1-9 with steps 0-9 in each 
+typedef struct profTplt {
+  float profTarg;                         // Ramp endpoint or Setpoint if RMin == 0
+  float profRMin;                         // Ramp time to TargTemp decimal minutes
+  float profHMin;                         // Hold time at TargTemp decimal minutes 
+}; 
+
+profTplt profLine = { idleTmpC, 0, 99 };
 //
-const char versChrs[] = "2017Au31 ";
+#define EADX_PROF 0                       // EEPROM starting address of stored profiles
+#define STEP_SIZE 3 * sizeof( float)
+#define PROF_SIZE 9 * STEP_SIZE
+// prof, line and parm are based 1 - n 
+profTplt profStep( int prof ) {
+  profTplt profWork;
+  int eadx = EADX_PROF + (prof - 1) * PROF_SIZE;
+  EEPROM.get( eadx, profWork);
+  return profWork; 
+}
 
 // pwmd vbls
 int  pwmdFreq, pwmdDuty, pwmdTarg, pwmdOutp;                          // Freq, Duty Cycle Target (255max) Output
 int  heatHist[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }; // mavg 16  for virtTcpl 
-int  degCHist[] = { 0, 0, 0, 0, 0, 0, 0, 0};                                // mavg store for temp rate of change 
+int  degCHist[] = { 0, 0, 0, 0, 0, 0, 0, 0};                          // mavg store for temp rate of change 
 byte pwmdPcnt;                                                        // Percent duty cycle 
 
-// Run Cntl vbls  Bit 0:Run 1:Ctrl 2:Auto 3:Info  Info: 4: 5:Virt 6:Dbug 7:bbrd 
+// Run Cntl vbls  Bit 0:Run 1:Atto 2:Manu 3:Attn 4:spare 5:Dbug 6:Arti 7:Info 
 #define RCTL_RUNS 0x80
 #define RCTL_AUTO 0x40
 #define RCTL_MANU 0x20
@@ -413,8 +420,10 @@ byte  offnRctl  = (RCTL_RUNS | RCTL_AUTO);
 #else
 byte  offnRctl  = RCTL_RUNS;
 #endif
-byte  profRctl  = RCTL_RUNS;
-byte  rotsRctl  = RCTL_RUNS;
+byte  profRctl  = RCTL_MANU;
+byte  stepRctl  = 0x00;
+byte  rampRctl  = 0x00;
+byte  holdRctl  = 0x00;
 byte  tcplRctl  = RCTL_RUNS;
 byte  userRctl  = RCTL_RUNS;
 byte  wifiRctl  = RCTL_RUNS;
@@ -424,7 +433,7 @@ byte  cb10Rctl  = RCTL_RUNS;
 byte  cb20Rctl  = RCTL_RUNS;
 byte  cb90Rctl  = RCTL_RUNS;
 
-byte profNmbr, profStep, profChar, stepChar;    // Numeric Profile No, Step No, Character values 
+byte profNmbr, stepNmbr, profChar, stepChar;    // Numeric Profile No, Step No, Character values 
 
 //  Rotary Switch
 byte rotsCurr, rotsNewb, offnCntr, offnOutp;   // Current value, newb test for change; off/on cycle counter, output 
@@ -500,9 +509,9 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t lenght
 #define PWMD_MODE  OUTPUT
 // ESP: No Rotary 16way encoder switch;
 // tcpl
-#define TCPL_CL   12  // SPI SCk
-#define TCPL_MI   14  // SPI Mstr In Slve Out 
-#define TCPL_CS   15  // SPI ChipSel 10K Gnd 
+#define TCPL_MISO 12  // SPI Mstr In Slve Out 
+#define TCPL_CLCK 14  // SPI SCk
+#define TCPL_CSEL 15  // SPI ChipSel 10K Gnd 
 #endif   // PROC_ESP
 
 //
@@ -522,19 +531,19 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t lenght
 #define ROTS_BIT1 11                        // Pin D11 Val 2 
 #define ROTS_BIT0 12                        // Pin D12 Val 1 
 // tcpl
-#define TCPL_CL    4                        // Pin D4 Clock
-#define TCPL_MI    7                        // Pin D7 Data
-#define TCPL_CS    8                        // Pin D8 CSel
+#define TCPL_CLCK  4                        // Pin D4 Clock
+#define TCPL_MISO  7                        // Pin D7 Data
+#define TCPL_CSEL  8                        // Pin D8 CSel
 #endif   // PROC_UNO
  
 #if WITH_MAX31855
 #if PROC_UNO
 #include "Adafruit_MAX31855.h"
-Adafruit_MAX31855 tcpl(TCPL_CL, TCPL_CS, TCPL_MI);
+Adafruit_MAX31855 tcpl(TCPL_CLCK, TCPL_CSEL, TCPL_MISO);
 #endif
 #if PROC_ESP
 #include "MAX31855.h"
-MAX31855 tcpl(TCPL_CL, TCPL_CS, TCPL_MI);
+MAX31855 tcpl(TCPL_CLCK, TCPL_CSEL, TCPL_MISO);
 #endif  //  ESP
 #endif  //  MAX31855
 
@@ -542,9 +551,9 @@ MAX31855 tcpl(TCPL_CL, TCPL_CS, TCPL_MI);
 float         targTmpC, sensTmpC, prevTmpC;   // target, sensor, previous temperature deg C
 int           userDuty, userDgpm, sensCdpm;   // userSet duty cycle; userSet C/F, meas C dg pm
 int           userAOT1, userAOT2, userAIO3;   // Arti OT1Dty, Arti OT2Dty, Arti IO3Dty 
-int           profTbeg;                       // profile start time
-int           profTmpC, profCdpm, userDegs;   // profile final temp, rate, user C/F tempr 
-int           stepSecs, totlSecs, tempIndx;   // profile step elap; total run time; temporary array indexer
+int           baseTmpC, rampCdpm, holdTmpC;   // Ramp start temp, hold at  endpoint 
+int           stepSecs, holdTogo, totlSecs;   // Step elapsed, hold countdown, total run time
+int           userDegs, tempIndx;             // User C/F temp,  temporary array indexer
 
 /// Common 
 //    Convert
@@ -552,15 +561,15 @@ float floatCtoF( float celsInp) {
   return (float( ((celsInp + 40.0) * 9.0 / 5.0 )  -40.0 ));
 }  
 
-//
-float floatFtoC( float fahrInp) {
-  return (float( ((fahrInp + 40.0) * 5.0 / 9.0 )  -40.0 ));
-}  
+// Not needed: Degs per min conversions need not to have offset 
+//float floatFtoC( float fahrInp) {
+  //return (float( ((fahrInp + 40.0) * 5.0 / 9.0 )  -40.0 ));
+//}  
   
 // integer fns add 0.5 for rounding
-int    intgCtoF( int   celsInp) {
-  return (int  ( ((celsInp + 40.0) * 9.0 / 5.0 )  -39.5 ));
-} 
+//int    intgCtoF( int   celsInp) {
+  //return (int  ( ((celsInp + 40.0) * 9.0 / 5.0 )  -39.5 ));
+//} 
  
 //
 int    intgFtoC( int   fahrInp) {
@@ -577,13 +586,13 @@ byte nibl2Hex ( byte tNibl){
   }
 }
   
-//  Timing 
-unsigned long mSecPast( unsigned long mSecLast) {
+//  Se04 notneeded ? Timing 
+//unsigned long mSecPast( unsigned long mSecLast) {
   // last millis() remains in global currMSec
-  currMSec =  millis();
+  //currMSec =  millis();
   // correct result with uns long even after oflo
-  return (currMSec - mSecLast);
-}
+  //return (currMSec - mSecLast);
+//}
 
 /// Billboard LCDisplay and Serial info Lines 
 void  bbrdArti() {
@@ -591,19 +600,17 @@ void  bbrdArti() {
   //Je 15 to get SV/Duty into Config-Device-Extra TC4Ch3-4  send Amb ET, BT SV, D% 
   // Je15 Artisan Iface : resp 'READ' = Amb,Ch1,2,3,4 Ta,Te,Tb,Te,Du
   if ( userScal == fahrScal) {                                
-    dtostrf( floatCtoF(ambiTmpC), 5, 1, &artiResp[0]  );         // Art's Ta Chn
-    dtostrf( floatCtoF(targTmpC), 5, 1, &artiResp[6]  );         //   Te 
-    dtostrf( floatCtoF(sensTmpC), 5, 1, &artiResp[12] );         //   Tb
-    //dtostrf( floatCtoF(targTmpC), 5, 1, &artiResp[18] );         //  Sv
-    dtostrf( int(sensCdpm * 9.00 / 5.00 + 50 ), 5, 1, &artiResp[18] ); //   SV  
+    dtostrf( floatCtoF(ambiTmpC), 5, 1, &artiResp[0]  );               // Art's Ta Chn
+    dtostrf( floatCtoF(targTmpC), 5, 1, &artiResp[6]  );               // ET
+    dtostrf( floatCtoF(sensTmpC), 5, 1, &artiResp[12] );               // BT
+    dtostrf( int(sensCdpm * 9.00 / 5.00 + 50 ), 5, 1, &artiResp[18] ); // SV  
   } else {
-    dtostrf(           ambiTmpC,  5, 1, &artiResp[0]  );         //  Ta
-    dtostrf(           targTmpC,  5, 1, &artiResp[6]  );         //  Te
-    dtostrf(           sensTmpC,  5, 1, &artiResp[12] );         //  Tb
-    //dtostrf(           targTmpC,  5, 1, &artiResp[18] );         //  SV
-    dtostrf( int(sensCdpm + 50   ), 5, 1, &artiResp[18] );         //  SV
+    dtostrf(           ambiTmpC,  5, 1, &artiResp[0]  );               // AT
+    dtostrf(           targTmpC,  5, 1, &artiResp[6]  );               // ET
+    dtostrf(           sensTmpC,  5, 1, &artiResp[12] );               // BT
+    dtostrf( int(sensCdpm + 50   ), 5, 1, &artiResp[18] );             // SV
   } 
-  dtostrf(           pwmdPcnt,  5, 1, &artiResp[24] );             // Dy
+  dtostrf(           pwmdPcnt,  5, 1, &artiResp[24] );                 // DU
   artiResp[5]  = ',';
   artiResp[11] = ',';
   artiResp[17] = ',';
@@ -667,9 +674,9 @@ void bbrdFill() {
   } else {
     dtostrf( ((totlSecs / 6) % 10), 1, 0, &bbrdLin1[9]);
     if ( userScal == fahrScal) {
-      dtostrf( floatCtoF(profTmpC),                 3, 0, &bbrdLin1[12] );
+      dtostrf( floatCtoF(holdTmpC),                 3, 0, &bbrdLin1[12] );
     } else {
-      dtostrf(           profTmpC,                  3, 0, &bbrdLin1[12] );
+      dtostrf(           holdTmpC,                  3, 0, &bbrdLin1[12] );
     }  
     bbrdLin1[15]  = userScal;                  //  upCase
   }  
@@ -677,7 +684,7 @@ void bbrdFill() {
   bbrdLin1[0]   = 'P';
   bbrdLin1[1]   = nibl2Hex( profNmbr);
   bbrdLin1[2]   = '-';
-  bbrdLin1[3]   = nibl2Hex(profStep);
+  bbrdLin1[3]   = nibl2Hex(stepNmbr);
   bbrdLin1[4]   = ' ';
   if ( totlSecs % 2 ) {
     bbrdLin1[5] = bbrdTmde;
@@ -704,12 +711,10 @@ void bbrdFill() {
       if ( userScal == fahrScal) {
         dtostrf( floatCtoF(sensTmpC),       5, 1, &artiResp[12] );
         dtostrf( floatCtoF(targTmpC),       5, 1, &artiResp[18] );
-        //Je18 dtostrf( floatCtoF(profTmpC),5, 1, &artiResp[25] );
         dtostrf( floatCtoF(sensCdpm * 9.0/5.0  + 50),  5, 1, &artiResp[25] ); // Arti scale offset
       } else {
         dtostrf(           sensTmpC,        5, 1, &artiResp[12] );
         dtostrf(           targTmpC,        5, 1, &artiResp[18] );
-        //Je18 instead dtostrf(           profTmpC,        5, 1, &artiResp[25] );
         dtostrf(          (sensCdpm + 50),  5, 1, &artiResp[25] );
       }
       dtostrf(             pwmdPcnt,        3, 0, &artiResp[31] );
@@ -741,7 +746,12 @@ void bbrdFill() {
 
 ///  EEPROM 
 void eprmInit() {
+#if PROC_ESP
+  // ESP8266 has no .length function 
+  eprmSize = 1024;
+#else  
   eprmSize = EEPROM.length();
+#endif  
   eprmFree = eprmSize - ( 6 * sizeof(float));  // Reserve floats: Kappa Gamma Beta Td Ti Kp 
 }
 void eprmInfo() {
@@ -876,9 +886,7 @@ void lcdsLoop() {
     if (lcdstRctl == 0) {
       // Rctl == 0 Shutdown
       lcd.home ();
-      lcd.print(F("<= lcdsLoop() =>"));
-      lcd.setCursor ( 0, 1 );
-      lcd.print(F(" Poll 0 Halted  "));
+      lcd.print(F("lcdsLoop() Halt "));
       delay ( 1000 );                //  1000mS startup delay
     } else {  
       //
@@ -1016,14 +1024,13 @@ void wrapPubl( const char * tTops , const char * tVals, int tInt ) {
 #endif
 #endif
   //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-  if ( 0 ) {
-    Serial.print  ("wrapPubl popcMqtt.publish topic : ");
-    Serial.println(tTops);
-    Serial.print  (" tVals : ");
-    Serial.print  (tVals);
-    Serial.print  (" RC : ");
-    Serial.println(rCode);
-  }
+    //Serial.print  ("wrapPubl popcMqtt.publish topic : ");
+    //Serial.println(tTops);
+    //Serial.print  (" tVals : ");
+    //Serial.print  (tVals);
+    //Serial.print  (" RC : ");
+    //Serial.println(rCode);
+  //}
   //delay(100);
 }    
 
@@ -1037,23 +1044,7 @@ void cbck1000() {
 
 //
 void cb10Svce() {
-  if ( 0 ) {
-  //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-    //Serial.println("cb10Svce - popcMqtt.publish..");
-  }  
   int rCode = 0;
-  //
-  dtostrf( pidcRn, 8, 3, mqttVals);
-  wrapPubl( (const char * )RnTops , (const char * )mqttVals, sizeof(mqttVals) ); 
-  //
-  dtostrf( pidcYn, 8, 3, mqttVals);
-  wrapPubl( (const char * )YnTops, (const char * )(mqttVals), sizeof(mqttVals) ); 
-  //
-  dtostrf( pidcEn, 8, 3, mqttVals);
-  wrapPubl( (const char * )EnTops, (const char * )(mqttVals), sizeof(mqttVals) ); 
-  //
-  dtostrf( pidcPn, 8, 3, mqttVals);
-  wrapPubl( (const char * )PnTops, (const char * )(mqttVals), sizeof(mqttVals) ); 
   //
   wrapPubl( (const char * )inf0Tops, (const char * )(bbrdLin0), sizeof(bbrdLin0) ); 
   wrapPubl( (const char * )inf1Tops, (const char * )(bbrdLin1), sizeof(bbrdLin1) ); 
@@ -1067,18 +1058,21 @@ void cb10Svce() {
 }
 
 void cbck2000() {
-  if ( 0 ) {
-  //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-    Serial.println("cbck2000 sets cb20Rctl ATTN");
-  }  
+  dtostrf( pidcRn, 8, 3, mqttVals);
+  wrapPubl( (const char * )RnTops , (const char * )mqttVals, sizeof(mqttVals) ); 
+  //
+  dtostrf( pidcYn, 8, 3, mqttVals);
+  wrapPubl( (const char * )YnTops, (const char * )(mqttVals), sizeof(mqttVals) ); 
+  //
+  dtostrf( pidcEn, 8, 3, mqttVals);
+  wrapPubl( (const char * )EnTops, (const char * )(mqttVals), sizeof(mqttVals) ); 
+  //
   cb20Rctl |= RCTL_ATTN;
 }
 
 void cb20Svce() {
-  if ( 0 ) {
   //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-    Serial.println("cb20Svce");
-  }  
+    //Serial.println("cb20Svce");
   int rCode = 0;
   // Artisan interface                                        'Read' Cmd; Send Ambient:Targ:Sens:Prof:Duty
   if ( userScal == fahrScal) {
@@ -1103,9 +1097,9 @@ void cb20Svce() {
   wrapPubl( (const char * )BTmpTops , (const char * )mqttVals, sizeof(mqttVals) ); 
   //
   if ( userScal == fahrScal) {
-    dtostrf( floatCtoF(profTmpC), 5, 1, mqttVals);
+    dtostrf( floatCtoF(holdTmpC), 5, 1, mqttVals);
   } else {
-    dtostrf(           profTmpC , 5, 1, mqttVals);
+    dtostrf(           holdTmpC , 5, 1, mqttVals);
 	}		
   wrapPubl( (const char * )ptmpTops , (const char * )mqttVals, sizeof(mqttVals) ); 
   wrapPubl( (const char * )PTmpTops , (const char * )mqttVals, sizeof(mqttVals) ); 
@@ -1131,18 +1125,6 @@ void cb20Svce() {
   //
   dtostrf( pidcUn, 8, 3, mqttVals);
   wrapPubl( (const char * )UnTops, (const char * )(mqttVals), sizeof(mqttVals) ); 
-    //
-  if (0){
-    dtostrf( pidcDn, 8, 3, mqttVals);
-    wrapPubl( (const char * )DnTops, (const char * )(mqttVals), sizeof(mqttVals) ); 
-    //
-    dtostrf( pidcIn, 8, 3, mqttVals);
-    wrapPubl( (const char * )InTops, (const char * )(mqttVals), sizeof(mqttVals) ); 
-    //
-    dtostrf( stepSecs, 8, 3, mqttVals);
-    wrapPubl( psecTops, (const char * )(mqttVals), sizeof(mqttVals) );
-    //
-  }  
   //
   cb20Rctl &= ~RCTL_ATTN;
 }
@@ -1156,10 +1138,8 @@ void cbck9000() {
 }
 
 void cb90Svce() {
-  if ( 0 ) {
 	//if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-  	Serial.println("cb90Svce");
-	}	
+  	//Serial.println("cb90Svce");
   int rCode = 0;
   dtostrf( pidcElap, 12, 3, mqttVals);
   wrapPubl( c900Tops, (const char *)(mqttVals), sizeof(mqttVals) ); 
@@ -1179,10 +1159,13 @@ void cb90Svce() {
   dtostrf( pidcGamma, 8, 3, mqttVals);
   wrapPubl( GammaTops, (const char * )(mqttVals), sizeof(mqttVals) ); 
   //
+  dtostrf( pidcKappa, 8, 3, mqttVals);
+  wrapPubl( KappaTops, (const char * )(mqttVals), sizeof(mqttVals) ); 
+  //
   if ( userScal == fahrScal) {
-    dtostrf( floatCtoF(profTmpC), 8, 3, mqttVals);
+    dtostrf( floatCtoF(holdTmpC), 8, 3, mqttVals);
   } else {
-    dtostrf(           profTmpC,  8, 3, mqttVals);
+    dtostrf(           holdTmpC,  8, 3, mqttVals);
   }  
   wrapPubl( (const char * )ptmpTops, (const char *)(mqttVals), sizeof(mqttVals) ); 
   //
@@ -1328,8 +1311,9 @@ void offnLoop() {
 //         Tf : Filter time
 //         Tf = alpha * Td , where alpha usually is set to 0.1
 ///
-//
-void pidcFrom() {
+
+// Retrieve updated parms from eprom 
+void pidcFprm() {
   EEPROM.get( EADX_KP, fromEprm);
   if ( pidcKp != fromEprm) {
     if ( !( bbrdRctl & RCTL_ARTI ) ) {
@@ -1345,7 +1329,7 @@ void pidcFrom() {
       Serial.print(F("EEPROM new Ti:"));
       Serial.println(fromEprm);
     }
-    pidcTi = fromEprm; 
+    pidcTi =  fromEprm; 
   }  
   //
   EEPROM.get( EADX_TD, fromEprm);
@@ -1390,7 +1374,7 @@ void pidcInit() {
   Epn1 = 0.0;
   Edfn2 = Edfn1 = Edfn = 0;
   // get 
-  pidcFrom();
+  pidcFprm();
   // first time being enabled, seed with current property tree value
   Un1 = Un = 0;
   pidcPrev =  millis();
@@ -1421,10 +1405,6 @@ void pidcLoop() {
   } else {
     // save this currMSec as time of service
     pidcPrev = currMSec;
-    // Adjusting with elapMSec errors after init when 8secs elapse  time togo  
-    //pidcTogo = 2 * PIDC_POLL_MSEC - pidcElap;
-    //Serial.print("pidc ");
-    //Serial.println( pidcElap);
     //
     if ( (pidcRctl & RCTL_RUNS)  == 0 ) {
       // Poll/Thermocouple == 0 Shutdown
@@ -1533,15 +1513,15 @@ void pidcDbug() {
   dbugLine[61]  = ' ';
   //
   #if 0
-  dbugLine[62]  = 'p';
+  dbugLine[62]  = 'P';
   dtostrf( (pidcPc  ), 6, 2, &dbugLine[63] );
   dbugLine[69]  = ' ';
   //
-  dbugLine[70]  = 'i';
+  dbugLine[70]  = 'I';
   dtostrf( (pidcIc  ), 6, 2, &dbugLine[71] );
   dbugLine[77]  = ' ';
   //
-  dbugLine[78]  = 'd';
+  dbugLine[78]  = 'D';
   dtostrf( (pidcDc  ), 6, 2, &dbugLine[79] );
   dbugLine[85]  = ' ';
   #endif
@@ -1553,10 +1533,22 @@ void pidcDbug() {
   } 
 }
 
-/// Profile Control
+/// Profile Control Sequence
+//    None selected                     : skip to sequencer end
+//      step not active                 : get next step
+//      past last step                  : reset,  skip to sequencer end
+//      ramp zero:                      : skip to hold temperature
+//      ramp active:                    : skip to sequencer end
+//      ramp (else ~zero && ~active)    : start active ramp, skip to sequencer end
+//      ramp done                       : pr rt active ramp, skip to sequencer end
+//      hold time zero                  : skip to sequencer hold
+//      hTemp ctive:                    : skip to sequencer end
+//      ramp (else ~zero && ~active)    : start active ramp, skip to sequencer end
+//      
+
 void profInit() {
   // simulation
-  prevTmpC = sensTmpC = profTmpC = int(ambiTmpC);
+  prevTmpC = sensTmpC = holdTmpC = int(ambiTmpC);
   stepSecs = totlSecs = 0;
   profPrev =  millis();
 }
@@ -1573,53 +1565,52 @@ void profLoop() {
     } else {
       pidcKc = pidcKp;
     }
-    // update billboard
-    bbrdFill();
     // prevent lcd rollover; 6000 secs == 100 min 
     (totlSecs > 5998) ? (totlSecs = 0):(totlSecs += 1);
     (stepSecs > 5998) ? (stepSecs = 0):(stepSecs += 1);
-    if (profNmbr > 0) {
-      // ToDo saved profiles
-      if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-        //Serial.println("profNmbr");
-      }  
-    } else {
-      // Default: No ramp, Do Not target setpoint, let userCmds do that  
-      // targTmpC = float(profTmpC);
-      // Ramp to setpt temp and hold, Unless Manual Ramp 
-      if (profCdpm != 0)  {
-        if (profTmpC >= profTbeg)  {
-          // User Ramp forces max temp, use Setpt after ramp setting for stop temp 
-          if ((sensTmpC >=  profTmpC) && (stepSecs > 10) ) {
-            profCdpm = 0;
-            //Je 18 stepSecs = 0;
-            bbrdTmde = bbrdHold;
-          } else {
-            bbrdTmde = bbrdRamp;
-            targTmpC = float(profTbeg) \
-                     + float (stepSecs) * float(profCdpm) / 60.0;
-          }  
-        } else {
-          // User Ramp forces min temp, use Setpt after ramp setting for stop temp 
-          //if ((sensTmpC <= targTmpC) && (stepSecs > 10) && (userDgpm == 0)) {
-          if ((sensTmpC <= profTmpC) && (stepSecs > 10)) {
-            profCdpm = 0;
-            //Je18 stepSecs = 0;
-            bbrdTmde = bbrdHold;
-          } else {
-            bbrdTmde = bbrdRamp;
-            targTmpC = float(profTbeg) \
-                     + float (stepSecs) * float(profCdpm) / 60.0;
-          }  
-        }
-      } 
+    // Handle stored profile 
+    if (profNmbr <= 0) {
+      // Stop auto profile and revert to manual control 
+      profRctl = RCTL_MANU;
+      stepRctl, rampRctl, holdRctl = 0x00;
     }
-    if ((profCdpm == 0) && (userDgpm == 0)) {
-      // user calls for ramp==0 ( not holdPt): target temp  unchanged
-      //profCdpm = 0;
-      // StepSecs shows time in either Setpoint of Hold after ramp 
-      //stepSecs = 0;
+    else {
+      // Active saved profile:  is active
+      if ( rampRctl & RCTL_RUNS ){
+        // Ramp to temp is active
+        if ( rampRctl & RCTL_ATTN ){
+        // Ramp to temp is active and complete
+        }
+      }
+      
+      //  
+    }
+    //
+    if (rampCdpm == 0) {
+      // ramp of zero implies full power to setpoint 
       bbrdTmde = bbrdSetp;
+    } else {
+      // Profile or User ramp to  setpoint temp and then hold
+      // User Ramp forces max/min setpoint temp: after 'r' cmd use 's' cmd to set Hold temp 
+      if (stepSecs > 10 )  {
+        if (holdTmpC >= baseTmpC ) {
+          // Rising  ramp finished when sensed is above hold Temp 
+          if (sensTmpC >= holdTmpC) bbrdTmde = bbrdHold;
+        } else {
+          // Falling ramp finished when sensed is below hold Temp 
+          if (sensTmpC <  holdTmpC) bbrdTmde = bbrdHold;
+        }
+      }
+      if ( bbrdTmde == bbrdHold ) {
+        // do not really want to have s mode 
+        rampCdpm = 0;
+        targTmpC = holdTmpC;
+        // wiprampFini = 1;
+      } else {
+        bbrdTmde = bbrdRamp;
+        targTmpC = float(baseTmpC) \
+                 + float (stepSecs) * float(rampCdpm) / 60.0;
+      }            
     }
     // Run exp mavg 5 second apart temp change 
     // ROC degrees per min is 60 * avg per second change 
@@ -1636,15 +1627,18 @@ void profLoop() {
       degCHist[1] = degCHist[0] ;
       degCHist[0] = int(sensTmpC);
       prevTmpC    = sensTmpC;
-        if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+      //  if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
         //Serial.print("Curr:");
         //Serial.print(sensTmpC);
         //Serial.print(" Prev:");
         //Serial.print(prevTmpC);
         //Serial.print(" Cdpm:");
         //Serial.println(sensCdpm);
-      }  
+      //  }  
     }  
+    // update billboard
+    bbrdFill();
+    //
     if (( bbrdRctl & RCTL_ARTI ) == 0) {
       if ( bbrdRctl & RCTL_INFO ) {
         // Send billboard 'Info' on serial 
@@ -1850,70 +1844,70 @@ void rotsLoop() {
         // manage rotary switch settings
         switch( rotsCurr) {
           case 0:
-            profStep = 0;
+            stepNmbr = 0;
             userCmdl = "W0";
             strstr(userChrs, "W0");
           break;
           case 1:
-            profStep = 1;
-            userCmdl = "R10";
+            stepNmbr = 1;
+            userCmdl = "R5";
             strstr(userChrs, "");
           break;
           case 2:
-            profStep = 2;
-            userCmdl = "R12";
+            stepNmbr = 2;
+            userCmdl = "R10";
           break;
           case 3:
-            profStep = 3;
+            stepNmbr = 3;
             userCmdl = "R15";
           break;
           case 4:
-            profStep = 4;
+            stepNmbr = 4;
             userCmdl = "R20";
           break;
           case 5:
-            profStep = 5;
-            userCmdl = "R25";
-          break;
-          case 6:
-            profStep = 6;
+            stepNmbr = 5;
             userCmdl = "R30";
           break;
-          case 7:
-            profStep = 7;
+          case 6:
+            stepNmbr = 6;
             userCmdl = "R40";
           break;
-          case 8:
-            profStep = 8;
+          case 7:
+            stepNmbr = 7;
             userCmdl = "R0";
           break;
-          case 9:
-            profStep = 9;
+          case 8:
+            stepNmbr = 8;
             userCmdl = "W100";
           break;
+          case 9:
+            stepNmbr = 9;
+            userCmdl = "W93";
+          break;
           case 10:
-            profStep = 10;
-            userCmdl = "W95";
+            stepNmbr = 10;
+            userCmdl = "W88";
           break;
           case 11:
-            profStep = 11;
-            userCmdl = "W90";
+            stepNmbr = 11;
+            userCmdl = "W80";
           break;
           case 12:
-            profStep = 12;
-            userCmdl = "W75";
+            stepNmbr = 12;
+            userCmdl = "W70";
           break;
           case 13:
-            profStep = 13;
+            stepNmbr = 13;
             userCmdl = "W60";
           break;
           case 14:
-            profStep = 14;
-            userCmdl = "W50";
+            stepNmbr = 14;
+            userCmdl = "W52";
           break;
           case 15:
-            profStep = 15;
-            userCmdl = "W40";
+            stepNmbr = 15;
+            userCmdl = "W45";
           break;
         }  
         userRctl |= RCTL_ATTN; 
@@ -1929,6 +1923,7 @@ void tcplInit() {
   // delay(500);
 #if WITH_MAX31855
 #if PROC_ESP
+  tcpl.setTCfactor(K_TC);
   tcpl.begin();
   Serial.println("tcpl.begin");
 #endif
@@ -2025,6 +2020,7 @@ void virtTcplLoop() {
 #if WITH_MAX31855
 void tcplRealLoop() {
   double tcplTmpC;
+  byte tResp = 0;
   currMSec = millis();
   if ( TCPL_TOGO > (currMSec - tcplPrev)) {
     return;
@@ -2040,9 +2036,30 @@ void tcplRealLoop() {
       tcplTmpC = tcpl.readCelsius();
 #endif
 #if PROC_ESP
-      tcplTmpC = tcpl.read();
+      // read() gets both status and temp 
+      tResp    = tcpl.read();
+      if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+        Serial.print("tcpl Stat:");
+        Serial.print(tcpl.getStatus);
+        Serial.print(" Fctr:");
+        Serial.print(tcpl.getTCFactor);
+        Serial.print(" Ofst:");
+        Serial.print(tcpl.getOffset);
+        Serial.print(" ITmp:");
+        Serial.print(tcpl.getInternal);
+        Serial.print(" TdegC:");
+        Serial.println(tcpl.getTemperature);
+      }  
+      // getTemperature returns internal variable from read()
+      tcplTmpC = tcpl.getTemperature();
 #endif
+      // Error  condition ESP:tResp <> 0   UNO: isNan Temperature  
+#if PROC_UNO
       if (isnan(tcplTmpC)) {
+        tResp = tcpl.readError();
+      }
+#endif       
+      if ( tResp != 0 ) {
 #if WITH_LCD
         lcd.clear();
         lcd.home ();
@@ -2050,10 +2067,9 @@ void tcplRealLoop() {
         lcd.setCursor ( 0, 1 );
 #endif
         if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-          Serial.print("tcplRealLoop Sts_");
+          Serial.print(" Sense: ");
         }  
-#if PROC_UNO
-        switch (tcpl.readError()) {
+        switch ( tResp ) {
           case 0: {
 #if WITH_LCD
             lcd.println("STATUS_OK      ");
@@ -2078,7 +2094,7 @@ void tcplRealLoop() {
             lcd.println("Error - Shrt-Gnd");
 #endif
             if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-              Serial.println("");
+              Serial.println("Shrt-Gnd");
             }
           }
           break;  
@@ -2087,7 +2103,7 @@ void tcplRealLoop() {
             lcd.println("Error - Shrt-Vcc");
 #endif
             if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-              Serial.println("");
+              Serial.println("Shrt-Vcc");
             }
           }
           break;  
@@ -2100,15 +2116,16 @@ void tcplRealLoop() {
             }
           }
         }
-#endif  // UNO error hdlr
 #if WITH_LCD
         delay (500);
         lcd.clear();
 #endif
       } else {
         // Only update sensed temp with a valid reading 
-        sensTmpC = float( tcplTmpC); 
+        //sensTmpC = float( tcplTmpC); 
       }  
+      // get temp even if error 
+      sensTmpC = float( tcplTmpC); 
     }  
   }  
 }  
@@ -2117,10 +2134,10 @@ void tcplRealLoop() {
 /// User Interface 
 //
 void userInit() {
-  profNmbr = profStep = 0;
-  profCdpm =  0;
+  profNmbr = stepNmbr = 0;
+  rampCdpm =  0;
   userScal = centScal;
-  profTbeg = profTmpC = userDegs = int(ambiTmpC);
+  baseTmpC = holdTmpC = userDegs = int(ambiTmpC);
   userCmdl = String("W0");
   userRctl |= RCTL_ATTN;
 }
@@ -2201,9 +2218,7 @@ void userSvce() {
           targTmpC = userDegs;
         }
         if (targTmpC > maxiTmpC) targTmpC = maxiTmpC;
-        profCdpm = 0;                                     // Setting target temp implies no ramp 
-        //profTbeg = int(sensTmpC);
-        //stepSecs = 0;
+        rampCdpm = 0;                                     // Setting target temp implies no ramp 
         pwmdRctl &= ~RCTL_MANU;
         pwmdRctl |=  RCTL_AUTO;
       }  
@@ -2223,7 +2238,7 @@ void userSvce() {
   // B  put pidc Beta term 
   if (userCmdl[0] == 'B') {
     pidcBeta = (userCmdl.substring(1)).toFloat();
-    //EEPROM.put( EADX_BE, pidcBeta);
+    pidcInfo();
   }
   //  c/C set Centigrade units 
   if (((userCmdl[0] == 'C') || (userCmdl[0] == 'c')) && (userCmdl[1] != 'H')) {
@@ -2268,7 +2283,8 @@ void userSvce() {
     EEPROM.get(EADX_KA, fromEprm);
     if ( pidcKappa != fromEprm ) {
       EEPROM.put( EADX_KA, pidcKappa);
-    }  
+    }
+    eprmInfo();  
   }
   // f/F Set fahrenheit units 
   if (((userCmdl[0] == 'F') || (userCmdl[0] == 'f')) && (userCmdl[1] != 'I')) {
@@ -2277,45 +2293,34 @@ void userSvce() {
   // G  put pid Gamma term 
   if (userCmdl[0] == 'G') {
     pidcGamma = (userCmdl.substring(1)).toFloat();
-    //EEPROM.put( EADX_GA, pidcGamma);
+    pidcInfo();
   }
   if ((userCmdl[0] == 'H') || (userCmdl[0] == 'h')) {
     // set desired hold temperatre deg
     userDegs = (userCmdl.substring(1)).toInt();
     if ( userScal == fahrScal) {
-      profTmpC = intgFtoC( userDegs); 
+      holdTmpC = intgFtoC( userDegs); 
     } else {
-      profTmpC = userDegs;
+      holdTmpC = userDegs;
     }
-    if (profTmpC > maxiTmpC) profTmpC = maxiTmpC;
-    // profTbeg = int(sensTmpC);
-    // stepSecs = 0;
+    if (holdTmpC > maxiTmpC) holdTmpC = maxiTmpC;
     pwmdRctl &= ~RCTL_MANU;
     pwmdRctl |=  RCTL_AUTO;
   }
   // I  put pid Ti term 
   if (userCmdl[0] == 'I') {
     pidcTi = (userCmdl.substring(1)).toFloat();
+    pidcInfo();
   }
   // J put pid Td term 
   if (userCmdl[0] == 'J') {
     pidcTd = (userCmdl.substring(1)).toFloat();
+    pidcInfo();
   }
   // K put pid Kappa term 
   if (userCmdl[0] == 'K') {
     pidcKappa = (userCmdl.substring(1)).toFloat();
-  }
-  if ((userCmdl[0] == 'm') || (userCmdl[0] == 'M')) {
-    // TBD stored profile from memory 
-    profNmbr = (userCmdl.substring(1)).toInt();
-    if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-      //Serial.println(F("userfSele"));
-    }  
-    stepSecs = 0;
-  }
-  // P  put pid Kp term 
-  if ((userCmdl[0] == 'p') || (userCmdl[0] == 'P')) {
-    pidcKp = (userCmdl.substring(1)).toFloat();
+    pidcInfo();
   }
   if ((userCmdl[0] == 'L') || (userCmdl[0] == 'l')) {
     // Toggle logging, preface with banner lines when logging started 
@@ -2334,24 +2339,34 @@ void userSvce() {
       bbrdRctl |= RCTL_INFO; 
     }  
   }
-  // o/O Readback / Set from EEPROM  PID operating parameters
+  if ((userCmdl[0] == 'm') || (userCmdl[0] == 'M')) {
+    // TBD stored profile from memory 
+    profNmbr = (userCmdl.substring(1)).toInt();
+    if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+      //Serial.println(F("userfSele"));
+    }  
+    stepSecs = 0;
+  }
+  // P  put pid Kp term 
+  if ((userCmdl[0] == 'p') || (userCmdl[0] == 'P')) {
+    pidcKp = (userCmdl.substring(1)).toFloat();
+    pidcInfo();
+  }
+  // o Readback PID operating parameters
   if (userCmdl[0] == 'o') {
     pidcInfo();
-  }  
-  if (userCmdl[0] == 'O') {
-    pidcFrom();
   }  
   if (((userCmdl[0] == 'R') || (userCmdl[0] == 'r')) && (userCmdl[1] != 'E')) {
     // Keep user entry for billboard; convert, set profile temp ramp rate degC/min
     userDgpm = (userCmdl.substring(1)).toInt();
     if ( userScal == fahrScal) {
-      profCdpm = int ( float(userDgpm) * 5.00 / 9.00);
+      rampCdpm = int ( float(userDgpm) * 5.00 / 9.00);
     } else {
-      profCdpm = userDgpm;
+      rampCdpm = userDgpm;
     }  
-    profTbeg = int(sensTmpC);
-    if (userDgpm > 0) profTmpC = maxiTmpC;
-    if (userDgpm < 0) profTmpC = int(ambiTmpC);
+    baseTmpC = int(sensTmpC);
+    if (userDgpm > 0) holdTmpC = maxiTmpC;
+    if (userDgpm < 0) holdTmpC = int(ambiTmpC);
     if (userDgpm == 0) {
       // Selected ROC 0: Hold current temp 
       bbrdTmde = bbrdHold;
@@ -2364,8 +2379,8 @@ void userSvce() {
     pwmdRctl &= ~RCTL_MANU;
     pwmdRctl |=  RCTL_AUTO;
     if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-      Serial.print(F("userCmdl r sets profCdpm to: "));
-      Serial.println(profCdpm);
+      Serial.print(F("userCmdl r sets rampCdpm to: "));
+      Serial.println(rampCdpm);
     }  
   }
   if ((userCmdl[0] == 'S') || (userCmdl[0] == 's')) {
@@ -2377,7 +2392,7 @@ void userSvce() {
       targTmpC = userDegs;
     }
     if (targTmpC > maxiTmpC) targTmpC = maxiTmpC;
-    profCdpm = userDgpm = 0;          // Setting target temp implies no ramp 
+    rampCdpm = userDgpm = 0;          // Setting target temp implies no ramp 
     stepSecs = 0;                     // User command: reset step timer 
     pwmdRctl &= ~RCTL_MANU;
     pwmdRctl |=  RCTL_AUTO;
@@ -2400,9 +2415,6 @@ void userSvce() {
     }  
     if ( userDuty == 0) {
       // Power off: Sense ambient ( fan htr pwr), temp setpt to meas ambient
-      //Je18 do not set ambient to some high sensed val 
-      //ambiTmpC = sensTmpC;
-      // profTmpC = int(ambiTmpC);
       targTmpC = sensTmpC;
     } else {
       stepSecs = 0;                   // User command: reset step timer 
@@ -2411,7 +2423,7 @@ void userSvce() {
     pwmdRctl &= ~RCTL_AUTO;
     pwmdRctl |=  RCTL_MANU;
     // manual pwm will apply in pwmd loop; unset manual ramp ctrl 
-    profCdpm = 0;
+    rampCdpm = 0;
   }
   if ((userCmdl[0] == 'Y') || (userCmdl[0] == 'y')) {
     if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
