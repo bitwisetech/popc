@@ -82,12 +82,12 @@
 //
 ///
 //  Code compiler switches: 1/0 Enab/Dsel UNO-ESP proc HW, Wifi options - Rebuild, Upload after changing these 
-#define PROC_UNO      1                  // Compile for Arduino Uno
-#define NEWP_UNO      1                  //   Uno new pins polly 
-#define PROC_ESP      0                  // Compile for ESP8266
+#define PROC_UNO      0                  // Compile for Arduino Uno
+#define NEWP_UNO      0                  //   Uno new pins polly 
+#define PROC_ESP      1                  // Compile for ESP8266
 #define WITH_LCD      0                  // Hdwre has I2C 2x16 LCD display
 #define WITH_MAX31855 1                  // Hdwre has thermocouple + circuit
-#define WITH_PCF8574  0                  // Hdwre has I2C I/O Extender      
+#define WITH_PCF8574  1                  // Hdwre has I2C I/O Extender      
 #define WITH_OFFN     1                  // Use ~250cy via mill Off-On SSR, not fast h/w PWM
 #define WIFI_MQTT     0                  // Compile for Wifi MQTT client
 #define WIFI_SOKS     0                  // Compile for Wifi Web Sckt Srvr
