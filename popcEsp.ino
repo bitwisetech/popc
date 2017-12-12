@@ -5,13 +5,15 @@
 //  eprm  EEPROM setup and handling 
 //  frnt  deprecated, sends data over Serial to Frontside / Process apps on PC for PID tuning   
 //  lcds  support for I2C 2x16 LCD display                             
+//  mill  fast ~1mSec sequencer inc A/D, Off-On, modulo variable freq/pwmd
 //  mqtt  ref ingo MQTT message queuing publish / subscribe protocol for control via PC MQTT client  
-//  offn  Slow Off/On approx 3sec cycle PWN for SSR controlled heater                      
-//  pidc  PID controller for PWM powered temperature control; a delta-time incremental PID 
-//  pwmd  8-bit PWM control via hardware pwm pins 
+//  offn  On-Off <= mains cycle/2 rate cycle PSW for SSR control (eg heater
+//  pidc  PID controller for PWM powered temperature control; a delta-time summing anti windup PID 
+//  pwmd  8-bit PWM control via freq >= ~30Hz hardware pwm pins 
 //  prof  Profile control; selects auto/manual temp setpt, manual pwm width, real/fake temp sensor
 //  rots  Rotary 16way encoded ( 4pin + common) selector switch manager
 //  tcpl  MAX31855 SPI thermocouple temperature sensor or virtual temp readings for debug
+//  twio  PCD8574 I2C 8b IO for (esp) rotary sw via 4bit in + 4b i/o eg indl, SSR on/off drives
 //  user  receive user's or Artisan commands via serial port, MQTT for setpoint, ramp, profiles 
 //    
 //  Arduino H/W details:  
@@ -47,19 +49,19 @@
 //  Jff     Set PID D-Term gain (Float Td: lower value == lower  gain)
 //  Kff     Set PID Gain TComp  (Float Kappa: 0 == no Temp comp)
 //  l/L     Send Artisan CSV format on serial ( for capture and Artisan Import )  
-//  m/M     Spare
-//  n/N     Spare
-//  o       Readback PIDC operating (not eeprom) parameters 
+//  m/M     Rsvd MQTT msg  
+//  n/N     Rsvd NetSock + 
+//  o       
 //  Pff     Readback / Set PID P-Term gain (Float Kp: lower value == lower  gain)
-//  q/Q     Spare
+//  q/Q     Query Readback PIDC operating (not eeprom) parameters / Q tbd
 //  rnn/Rnn Set Temperature Ramp C/F Deg per min (Set before hold temp) 
 //  snn/Snn Set immediate target setPoint C/F temperature  
 //  t/T     Spare
-//  u/U     Spare
+//  u/U     Set PWM Frequency Hz (TBD)  
 //  v/V     Readback firmware version, PID, EEPROM parms to serial 
 //  wnn/Wnn Set PWM Duty Cycle nn <= 100, disable PID
-//  x/X     Spare
-//  y/Y     Set PWM Frequency Hz (TBD)  
+//  x/X     tbd rddbk  / wRite  x axis parms
+//  y/Y     tbd
 //  z/Z     Zero reset all timecounts
 //
 //  Copyright (c) 2017 Bitwise Technologies  popc@bitwisetech.com  
@@ -78,20 +80,195 @@
 //  along with this program; if not, write to the Free Software                    
 // .Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA 
 //
-
-//  Code section compiler switches - Rebuild and Upload after changing these 
-#define PROC_ESP      0                  // Compile for ESP8266
-#define WIFI_WMAN     0                  // Compile for Wifi Manager
-#define WIFI_MQTT     0                  // Compile for Wifi MQTT client
-#define WIFI_SOKS     0                  // Compile for Wifi Web Sckt Srvr
+///
+//  Code compiler switches: 1/0 Enab/Dsel UNO-ESP proc HW, Wifi options - Rebuild, Upload after changing these 
 #define PROC_UNO      1                  // Compile for Arduino Uno
+#define NEWP_UNO      1                  //   Uno new pins polly 
+#define PROC_ESP      0                  // Compile for ESP8266
 #define WITH_LCD      0                  // Hdwre has I2C 2x16 LCD display
 #define WITH_MAX31855 1                  // Hdwre has thermocouple + circuit
-#define WITH_PCF8574  1                  // Hdwre has I2C I/O Extender      
+#define WITH_PCF8574  0                  // Hdwre has I2C I/O Extender      
+#define WITH_OFFN     1                  // Use ~250cy via mill Off-On SSR, not fast h/w PWM
+#define WIFI_MQTT     0                  // Compile for Wifi MQTT client
+#define WIFI_SOKS     0                  // Compile for Wifi Web Sckt Srvr
+#define WIFI_WMAN     0                  // Compile for Wifi Manager
 #define IFAC_ARTI     0                  // Start with Artisan interface on Serial
-#define WITH_OFFN     0                  // Use ~4sec Off-On SSR, not fast PWM
 #define IFAC_FRNT     0                  // Obsolete Front/Process interface on Serial 
- 
+//
+// UNO pin assignments
+#if PROC_UNO
+#if NEWP_UNO
+// Off/On SSR driver 
+#define OFFN_OPIN  2
+// Onboard Led indicates duty cycle
+#define ONBD_OPIN LED_BUILTIN
+#define ONBD_LOWON  0         
+// PWM Drive
+// d9 needed by RFI scan  d6 would use tmr0 want d3 used by max13855
+#define PWMD_OPIN  9                        // Pin D6
+#define PWMD_MODE  OUTPUT
+#define PWMD_FREQ  31                       // UNO: timer counter range
+// Rotary 16way encoder switch; D13 is LED on UNO 
+#define ROTS_BIT3  6                        // Pin Val 8 
+#define ROTS_BIT2 10                        // Pin Val 4 
+#define ROTS_BIT1 11                        // Pin Val 2 
+#define ROTS_BIT0 12                        // Pin Val 1 
+// spi2 on UNO uno for repl tcpl (excl twio)
+#define SPI2_CLCK  3                        // Pin Clock
+#define SPI2_MISO  5                        // ( Pin D4 used TCPL
+#define SPI2_CSEL  2                        // Pin CSel
+//#define RSVD_MOSI  5                        // Pin D5 Rsvd 
+// spi on uno FOR tcpl
+#define TCPL_CLCK  4                        // Pin Clock
+#define TCPL_MISO  7                        // Pin Data
+#define TCPL_CSEL  8                        // Pin CSel
+// i2c on pcf8574 TWIO (excl spi2)
+#define TWIO_SDA   5     // I2C SDA
+#define TWIO_SCL   3     // I2C SCL
+//
+#define SCOP_OPIN  2     // debug flag nixes SPI2_CSEL
+//
+#else    // NOT NEWP_UNO
+//
+// Off/On SSR driver 
+#define OFFN_OPIN  5
+// Onboard Led indicates duty cycle
+#define ONBD_OPIN LED_BUILTIN
+#define ONBD_LOWON  0         
+// PWM Drive
+// d9 needed by RFI scan  d6 would use tmr0 want d3 used by max13855
+#define PWMD_OPIN  9                        // Pin D9
+#define PWMD_MODE  OUTPUT
+#define PWMD_FREQ  31                       // UNO: timer counter range
+// Rotary 16way encoder switch; D13 is LED on UNO 
+#define ROTS_BIT3  6                        // Pin Val 8 
+#define ROTS_BIT2 10                        // Pin Val 4 
+#define ROTS_BIT1 11                        // Pin Val 2 
+#define ROTS_BIT0 12                        // Pin Val 1 
+// spi on uno FOR tcpl
+#define TCPL_CLCK  4                        // Pin Clock
+#define TCPL_MISO  7                        // Pin Data
+#define TCPL_CSEL  8                        // Pin CSel
+//
+//
+#define SCOP_OPIN   2    // debug flag is +OnBrdLed
+#endif   // !NEWP_UNO
+#endif   // PROC_UNO
+
+// ESP Pin Assignments 
+#if PROC_ESP
+// A/D 1v 10b on 
+// Off/On SSR driver GPIO 16 deepWake     
+#define OFFN_OPIN 16
+// Handle either LED polarity with: (1 & ~ONBD_LOWON) for light, (0 | LED_LOWN) for dark 
+#define ONBD_OPIN  0
+#define ONBD_LOWON  1
+// PWM Drive SSR driver GPIO 2 BLed  
+#define PWMD_OPIN  2
+#define PWMD_MODE  OUTPUT
+#define PWMD_FREQ  33
+// spi on ESP FOR tcpl
+#define TCPL_MISO 12  // SPI Mstr In Slve Out 
+#define TCPL_CLCK 14  // SPI SCk
+#define TCPL_CSEL 15  // SPI ChipSel 10K Gnd 
+// PCF8574 ESP: ROTS Rotary 16way encoder switch;
+// i2c on esp for TWIO pcf8574
+#define TWIO_SDA   4     // I2C SDA
+#define TWIO_SCL   5     // I2C SCL
+// 
+#define SCOP_OPIN  13    // debug flag uses 'MOSI' line  
+//digitalWrite( SCOP_OPIN, 1);
+//digitalWrite( SCOP_OPIN, 0);
+//
+#endif   // PROC_ESP
+
+/// WiFi preamble for ESP with Wifi Router ID, PW Info 
+// 
+#if PROC_ESP
+#include <Adafruit_ESP8266.h>
+//
+// wifi Replace with your own network's SSID, Password
+//const char* upwdSsid = "myRouterAddx";
+//const char* upwdPwrd = "myRouterPswd";
+//const char* dnwdSsid = "myAPsSSID";
+//const char* dnwdPwrd = "myAPsPswd";
+// wifiManager.autoConnect("upwdSsid", "password");
+//
+const char* upwdSsid = "bitwComw";
+//
+const char* upwdPwrd = "manchester1102190tan";
+//
+//const char* dnwdSsid = "espopc8101";
+//const char* dnwdPwrd = "summerseat";
+//const char* upwdSsid = "cherib";
+//const char* upwdPwrd = "sUmMeRsEaT";
+//const char* upwdSsid = "inactive";
+//const char* upwdPwrd = "pickledcrab1102190";
+//const char* upwdSsid = "bitwComc";
+//const char* upwdPwrd = "tWiStEdTeA";
+// wifiManager.autoConnect("upwdSsid", "password");
+// Beg paste from pubsShed 
+// these incs via popcShed ingo MQTT with tickScheduler 
+// 
+#include <ESP8266WiFi.h>
+#include <ESP8266WiFiGeneric.h>
+#include <ESP8266WiFiType.h>
+#include <ESP8266WiFiAP.h>
+#include <ESP8266WiFiMulti.h>
+#include <ESP8266WiFiScan.h>
+#include <ESP8266WiFiSTA.h>
+#include <WiFiClient.h>
+#include <WiFiClientSecure.h>
+#include <WiFiUdp.h>
+#include <WiFiServer.h>
+
+//  Mqtt
+#if WIFI_MQTT
+#include <MQTT.h>
+#define MQCL_ID "popc"
+//  Mqtt
+// create MQTT object with IP address, port of MQTT broker e.g.mosquitto application
+// 
+MQTT myMqtt(MQCL_ID, "test.mosquitto.org", 1883);
+#endif  // WIFI_MQTT
+
+//Jn01 WifiManager 
+#if WIFI_WMAN
+#include <DNSServer.h>            //Local DNS Server used for redirecting all requests to the configuration portal
+#include <ESP8266WebServer.h>     //Local WebServer used to serve the configuration portal
+#include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager WiFi Configuration Magic
+#endif  // WIFI_WMANT
+//
+#if WIFI_SOKS
+//  Jn02 arduWWebSockets
+//Jn03 wsokSrvr
+#include <WebSocketsServer.h>
+#include <Hash.h>
+//  WebSockets
+ESP8266WiFiMulti WiFiMulti;
+WebSocketsServer webSocket = WebSocketsServer(5981);
+#define USE_SERIAL Serial
+#endif // WIFI_SOKS
+//
+// from another copy ??
+#include <dummy.h>
+#endif  // PROC_ESP
+
+
+/// system settings 
+//  Second poll values Primes to suppress beating 
+
+#define ADC0_POLL_MILL    2UL            // mS lcd display poll
+#define LCDS_POLL_MSEC 1000UL            // mS lcd display poll
+#define MILL_POLL_USEC 1000UL            // uS 1KHz mill   poll
+#define PIDC_POLL_MSEC  101UL            // mS pid control poll
+#define PROF_POLL_MSEC  997UL            // mS run control poll
+#define PWMD_POLL_MSEC  103UL            // mS pwm driver  poll
+#define ROTS_POLL_MSEC  503UL            // mS rotary sw   poll
+#define TCPL_POLL_MSEC   97UL            // mS termocouple poll
+#define VTCP_POLL_MSEC  251UL            // mS virt tcpl   poll
+#define POLL_SLOP_MSEC    5UL            // Avge loop time is 10mSec
+//
 #if 0
 // milliSecond poll values
 #define TCPL_POLL_MSEC  100UL            // mS termocouple poll
@@ -101,29 +278,10 @@
 #define ROTS_POLL_MSEC  500UL            // mS rotary sw   poll
 #define LCDS_POLL_MSEC 1000UL            // mS lcd display poll
 #define PROF_POLL_MSEC 1000UL            // mS run control poll
-#define OFFN_POLL_MSEC   25UL            // mS run control poll
-#define POLL_SLOP_MSEC    5UL            // Avge loop time is 10mSec 
+#define MILL_POLL_USEC 4000UL            // uS 240Hz mill  poll
+#define POLL_SLOP_MSEC    5UL            // Avge loop time is 10mSec
 #endif 
-
-// milliSecond poll values Primes to suppress beating 
-#define LCDS_POLL_MSEC 1000UL            // mS lcd display poll
-#define OFFN_POLL_MSEC   23UL            // mS run control poll
-#define PIDC_POLL_MSEC  101UL            // mS pid control poll
-#define PROF_POLL_MSEC  997UL            // mS run control poll
-#define PWMD_POLL_MSEC  103UL            // mS pwm driver  poll
-#define ROTS_POLL_MSEC  503UL            // mS rotary sw   poll
-#define TCPL_POLL_MSEC   97UL            // mS termocouple poll
-#define VTCP_POLL_MSEC  251UL            // mS virt tcpl   poll
-#define POLL_SLOP_MSEC    5UL            // Avge loop time is 10mSec 
 //
-#define LCDS_TOGO (LCDS_POLL_MSEC - POLL_SLOP_MSEC)  // poll delay for compare
-#define OFFN_TOGO (OFFN_POLL_MSEC - POLL_SLOP_MSEC)  // poll delay for compare
-#define PIDC_TOGO (PIDC_POLL_MSEC - POLL_SLOP_MSEC)  // poll delay for compare
-#define PROF_TOGO (PROF_POLL_MSEC - POLL_SLOP_MSEC)  // poll delay for compare
-#define PWMD_TOGO (PWMD_POLL_MSEC - POLL_SLOP_MSEC)  // poll delay for compare
-#define ROTS_TOGO (ROTS_POLL_MSEC - POLL_SLOP_MSEC)  // poll delay for compare
-#define TCPL_TOGO (TCPL_POLL_MSEC - POLL_SLOP_MSEC)  // poll delay for compare
-#define VTCP_TOGO (VTCP_POLL_MSEC - POLL_SLOP_MSEC)  // poll delay for compare
 
 // BOF preprocessor bug prevent - insert me on top of your arduino-code
 // From: http://www.a-control.de/arduino-fehler/?lang=en
@@ -131,86 +289,70 @@
 __asm volatile ("nop");
 #endif
 //
+
+/// library files and addx assignments for options
 #include <Arduino.h>
 #include <EEPROM.h>
+#include <SPI.h>
+#include <Wire.h>  // Comes with Arduino IDE
+
+// lcd                                     
+// Pin A4 Pin A5 i2c
+// set LCD address to 0x27 for a A0-A1-A2  display
+//   args: (addr, en,rw,rs,d4,d5,d6,d7,bl,blpol)
+#if WITH_LCD
+#if PROC_UNO
+#include <LiquidCrystal_I2C.h>
+LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  // Set the LCD I2C address
+#endif 
+#endif 
+
 // 
+#if WITH_MAX31855
+#if PROC_UNO
+#include "Adafruit_MAX31855.h"
+Adafruit_MAX31855 tcpl(TCPL_CLCK, TCPL_CSEL, TCPL_MISO);
+#endif
 #if PROC_ESP
-#include <Adafruit_ESP8266.h>
-// Beg paste from pubsShed 
-// popcShed ingo MQTT with tick, scheduler 
-// 
-#include <WiFiClient.h>
-#include <ESP8266WiFiAP.h>
-#include <WiFiUdp.h>
-#include <ESP8266WiFiGeneric.h>
-#include <ESP8266WiFiType.h>
-#include <ESP8266WiFi.h>
-#include <WiFiClientSecure.h>
-#include <WiFiServer.h>
-#include <ESP8266WiFiScan.h>
-#include <ESP8266WiFiSTA.h>
-#include <ESP8266WiFiMulti.h>
-//Jn01 WifiManager 
-#if WIFI_WMAN
-#include <DNSServer.h>            //Local DNS Server used for redirecting all requests to the configuration portal
-#include <ESP8266WebServer.h>     //Local WebServer used to serve the configuration portal
-#include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager WiFi Configuration Magic
-#endif
-#if WIFI_SOKS
-//  Jn02 arduWWebSockets
-//Jn03 wsokSrvr
-#include <WebSocketsServer.h>
-#include <Hash.h>
-#endif
-//  Mqtt
-#if WIFI_MQTT
-#include <MQTT.h>
-#define MQCL_ID "popc"
-#endif
-//
-// wifi Replace with your own network's SSID, Password
-//const char* upwdSsid = "cherib";
-//const char* upwdPwrd = "sUmMeRsEaT";
-//const char* upwdSsid = "inactive";
-//const char* upwdPwrd = "pickledcrab1102190";
-//const char* upwdSsid = "bitwComc";
-//const char* upwdPwrd = "tWiStEdTeA";
-//
-const char* upwdSsid = "bitwComw";
-//
-const char* upwdPwrd = "manchester1102190tan";
-//
-// wifiManager.autoConnect("upwdSsid", "password");
-//
-const char* dnwdSsid = "espopc8101";
-//
-const char* dnwdPwrd = "summerseat";
-//
-#if WIFI_MQTT
-//  Mqtt
-// create MQTT object with IP address, port of MQTT broker e.g.mosquitto application
-// MQTT myMqtt(MQCL_ID, "test.mosquitto.org", 1883);
-//
-MQTT popcMqtt(MQCL_ID, "172.20.224.111", 5983);
-//MQTT popcMqtt(MQCL_ID, "172.20.224.117", 5983);
-#endif
-//
-#if WIFI_SOKS
-//  WebSockets
-ESP8266WiFiMulti WiFiMulti;
-WebSocketsServer webSocket = WebSocketsServer(5981);
-#define USE_SERIAL Serial
+#include "MAX31855.h"
+MAX31855 tcpl(TCPL_CLCK, TCPL_CSEL, TCPL_MISO);
+#endif  //  ESP
+#endif  //  MAX31855
 
-#endif // WIFI_SOKS
-
-// from another copy ??
-#include <dummy.h>
+// TWIO pcf8574
+#if WITH_PCF8574
+#define TWIO_IMSK  0x0F  // PCF port 3-0 pin  7-4 are inputs 
+#define TWIO_OMSK  0xF0  // PCF port 7-4 pin 12-9 are outputs 
+//
+#define TWIO_ADDX  0x20  // A0,A1, A2 Gnd
+#define ADC0_TWPO  4     // Curr Hi-lo v Adc0 Avg prt 4  pin  9
+#define MILL_TWPO  5     // mill fast io          prt 5  pin 10
+#define OFFN_TWPO  6     // offn                  prt 6  pin 11
+#define SPAR       7     // mill fast io          prt 7  pin 12
+#include "PCF8574.h"
+void twioInit(void);
+int  twioRead8(void);
+void twioWritePin(byte, byte);
+void twioWrite8(byte);
+PCF8574 twio( TWIO_ADDX );
+int twioCurr;
 #endif
 
 /// Declarations by unit
+//
+float   ambiTmpC  = 28;                    //  28C  82F rm temp then W0 + fan htr temp
+#define idleTmpC    50                     //  50C temp with W0 due to fan heater coil  
+#define maxiTmpC    248                    // 248C 480F as maximum temp 
 
-// 40+ char Artisan serial pkt: ambient, ch1, ch2, ch3, ch4 or Logging Tt Ts BT ET SV Duty
+// A/D Chan 0 
+long adc0Curr, adc0Prev, adc0Maxi, adc0Mini, adc0Avge, adc0Bit0; 
+
+
+// Artisan 40+ char serial pkt: ambient, ch1, ch2, ch3, ch4 or Logging Tt Ts BT ET SV Duty
 char artiResp[] = "023.0,128.8,138.8,000.0,000.0          ";  // 39 + null
+// Artisan csv header format: these two lines must contain tab chars, not spaces
+const char csvlLin1[] = "Date:	Unit:C	CHARGE:	TP:	DRYe:	FCs:	FCe:	SCs:	SCe:	DROP:	COOL:	Time:";
+const char csvlLin2[] = "Time1	Time2	BT	ET	Event	SV	DUTY";
 
 // billboard string for LCD + Serial  Lower cases: computed/measured Upper case: User/Setpoints 
 char bbrdLin0[] = "w100% r-123 128c"; 
@@ -224,15 +366,6 @@ char dbugLine[] = " <==>                                                        
 char centScal   = 'C';
 char fahrScal   = 'F';
 char userScal   = 'C';
-
-//
-float   ambiTmpC  = 28;                    //  28C  82F rm temp then W0 + fan htr temp
-#define idleTmpC    50                     //  50C temp with W0 due to fan heater coil  
-#define maxiTmpC    248                    // 248C 480F as maximum temp 
-
-// Artisan csv header format: these two lines must contain tab chars, not spaces
-const char csvlLin1[] = "Date:	Unit:C	CHARGE:	TP:	DRYe:	FCs:	FCe:	SCs:	SCe:	DROP:	COOL:	Time:";
-const char csvlLin2[] = "Time1	Time2	BT	ET	Event	SV	DUTY";
 
 String     userCmdl("exactly thirty one chars length");  // Crashable ! 
 char   userChrs[] = "023.0,128.8,138.8,000.0,000.0           ";  // 40sp 39 + nullch 
@@ -249,19 +382,16 @@ byte Direct_Reverse = -1;
 unsigned long frntPoll; //this will help us know when to talk with processing
 #endif
 
-// lcd                                     
-// Pin A4 Pin A5 i2c
-// set LCD address to 0x27 for a A0-A1-A2  display
-//   args: (addr, en,rw,rs,d4,d5,d6,d7,bl,blpol)
-#if WITH_LCD
-#if PROC_UNO
-#include <LiquidCrystal_I2C.h>
-LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  // Set the LCD I2C address
-#endif 
-#endif 
-
-#include <SPI.h>
-#include <Wire.h>  // Comes with Arduino IDE
+//eprm
+float fromEprm;
+int eprmSize, eprmFree;
+// Addresses at end of EEPROM for saved PID parameters
+#define EADX_KP (eprmSize - 1 * (sizeof(float)))
+#define EADX_TI (eprmSize - 2 * (sizeof(float)))
+#define EADX_TD (eprmSize - 3 * (sizeof(float)))
+#define EADX_BE (eprmSize - 4 * (sizeof(float)))
+#define EADX_GA (eprmSize - 5 * (sizeof(float)))
+#define EADX_KA (eprmSize - 6 * (sizeof(float)))
 
 // i-n-g-o MQTT 
 // mqtt strings are declared for both ESP8266 and UNO 
@@ -272,7 +402,8 @@ const char echoTops[]  = "/popc/echoCmdl";
 const char inf0Tops[]  = "/popc/bbrdLin0";
 const char inf1Tops[]  = "/popc/bbrdLin1";
 const char psecTops[]  = "/popc/stepSecs";
-const char dutyTops[]  = "/popc/pwmdPcnt";
+const char dutyTops[]  = "/popc/pwmdDuty";
+const char freqTops[]  = "/popc/pwmdFreq";
 const char ptmpTops[]  = "/popc/profDegs";
 const char dgpmTops[]  = "/popc/sensDgpm";
 const char userTops[]  = "/popc/userCmdl";
@@ -297,22 +428,10 @@ const char TiTops[]    = "/popc/pidc/Ti";
 const char BetaTops[]  = "/popc/pidc/Beta";
 const char GammaTops[] = "/popc/pidc/Gamma";
 const char KappaTops[] = "/popc/pidc/Kappa";
-const char TlapTops[]  = "/popc/pidc/LoopMillis";
-
-//eprm
-float fromEprm;
-int eprmSize, eprmFree;
-// Addresses at end of EEPROM for saved PID parameters
-#define EADX_KP (eprmSize - 1 * (sizeof(float)))
-#define EADX_TI (eprmSize - 2 * (sizeof(float)))
-#define EADX_TD (eprmSize - 3 * (sizeof(float)))
-#define EADX_BE (eprmSize - 4 * (sizeof(float)))
-#define EADX_GA (eprmSize - 5 * (sizeof(float)))
-#define EADX_KA (eprmSize - 6 * (sizeof(float)))
 
 //pidc
-#if WITH_OFFN
-// Slow response PID to match 4sec cycle of SSR Off-On 
+#if DONT_WITH_OFFN
+// Slow response PID to match 4sec cycle of SSR Off-On nah 
 float pidcKp      =   6.000;              // P-Term gain
 float pidcKc      =   6.000;              // P-Term gain
 float pidcTi      =   1.000;              // I-Term Gain sec ( Ti++ = Gain--)
@@ -362,7 +481,7 @@ float pidcPc, pidcIc, pidcDc       = 0.0; // cumulative P-I-D components
 float pidcUn = 0.0;                       // PID controller Output
 
 // 
-const char versChrs[] = "2017SSe15";
+const char versChrs[] = "2017SDc05-TWIO";
 
 // profiles
 //   stored as profiles 1-9 with steps 0-9 in each 
@@ -436,27 +555,31 @@ byte  cb90Rctl  = RCTL_RUNS;
 byte profNmbr, stepNmbr, profChar, stepChar;    // Numeric Profile No, Step No, Character values 
 
 //  Rotary Switch
-byte rotsCurr, rotsNewb, offnCntr, offnOutp;   // Current value, newb test for change; off/on cycle counter, output 
+byte rotsCurr, rotsNewb, offnOutp;   // Current value, newb test for change; off/on cycle counter, output 
 
-//  time
-unsigned int  mSecOflo;
-unsigned long currMSec, elapMSec, pidcElap = 0UL;
-unsigned long lcdsPrev, pidcPrev, profPrev = 0UL;  // mSec poll loop timer counters
-unsigned long pwmdPrev, rotsPrev, tcplPrev = 0UL;  // mSec poll loop timer counters
-unsigned long vtcpPrev, offnPrev           = 0UL;  // mSec poll loop timer counters
+//  time markers compared with uS mS and mill count 
+unsigned long adc0Mark, adc0Poll                               = 0UL;
+unsigned long lcdsMark, millStep, millMark, pidcElap, pidcMark = 0UL;
+unsigned long profMark, pwmdMark, rotsMark, tcplMark, vtcpMark = 0UL;
+//unsigned long lcdsMark, pidcMark, profMark = 0UL;
+//unsigned long pwmdMark, rotsMark, tcplMark = 0UL;
+//unsigned long vtcpMark, millMark, millStep = 0UL;
 //
 
 #if PROC_ESP
 #include "TickerScheduler.h"
 TickerScheduler popcShed(3);
-// End paste from pubsShed 
+//
 
+#if WIFI_MQTT
 //share RW pubsub + RO
 void dataCbck(String& topic, String& data);
 void publCbck();
 void discCbck();
 void connCbck();
+#endif //WIFI_MQTT
 
+//
 #if WIFI_SOKS  // wsokSrvr
 void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t lenght) {
   switch(type) {
@@ -497,56 +620,6 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t lenght
 #else 
 #endif  // PROC_ESP
 
-// Todo maybe these pin assignments are only good for UNO 
-#if PROC_ESP
-// Off/On SSR driver GPIO 16 deepWake     
-#define OFFN_OPIN 16
-// Handle either LED polarity with: (1 & ~LED_LOWON) for light, (0 | LED_LOWOFF) for dark 
-#define LED_ONBRD  0
-#define LED_LOWON  1
-// PWM Drive PWM SSR driver GPIO 2 BLed  
-#define PWMD_OPIN  2
-#define PWMD_MODE  OUTPUT
-// ESP: No Rotary 16way encoder switch;
-// tcpl
-#define TCPL_MISO 12  // SPI Mstr In Slve Out 
-#define TCPL_CLCK 14  // SPI SCk
-#define TCPL_CSEL 15  // SPI ChipSel 10K Gnd 
-#endif   // PROC_ESP
-
-//
-#if PROC_UNO
-// Off/On SSR driver 
-#define OFFN_OPIN  5
-//
-#define LED_ONBRD LED_BUILTIN
-#define LED_LOWON  0
-// PWM Drive
-// d9 needed by RFI scan  d6 would use tmr0 want d3 used by max13855
-#define PWMD_OPIN  9                        // Pin D9
-#define PWMD_MODE  OUTPUT
-// Rotary 16way encoder switch; D13 is LED on UNO 
-#define ROTS_BIT3  6                        // Pin D6  Val 8 
-#define ROTS_BIT2 10                        // Pin D10 Val 4 
-#define ROTS_BIT1 11                        // Pin D11 Val 2 
-#define ROTS_BIT0 12                        // Pin D12 Val 1 
-// tcpl
-#define TCPL_CLCK  4                        // Pin D4 Clock
-#define TCPL_MISO  7                        // Pin D7 Data
-#define TCPL_CSEL  8                        // Pin D8 CSel
-#endif   // PROC_UNO
- 
-#if WITH_MAX31855
-#if PROC_UNO
-#include "Adafruit_MAX31855.h"
-Adafruit_MAX31855 tcpl(TCPL_CLCK, TCPL_CSEL, TCPL_MISO);
-#endif
-#if PROC_ESP
-#include "MAX31855.h"
-MAX31855 tcpl(TCPL_CLCK, TCPL_CSEL, TCPL_MISO);
-#endif  //  ESP
-#endif  //  MAX31855
-
 //
 float         targTmpC, sensTmpC, prevTmpC;   // target, sensor, previous temperature deg C
 int           userDuty, userDgpm, sensCdpm;   // userSet duty cycle; userSet C/F, meas C dg pm
@@ -586,14 +659,6 @@ byte nibl2Hex ( byte tNibl){
   }
 }
   
-//  Se04 notneeded ? Timing 
-//unsigned long mSecPast( unsigned long mSecLast) {
-  // last millis() remains in global currMSec
-  //currMSec =  millis();
-  // correct result with uns long even after oflo
-  //return (currMSec - mSecLast);
-//}
-
 /// Billboard LCDisplay and Serial info Lines 
 void  bbrdArti() {
   //// Artisan Iface : resp 'READ' = Amb,Ch1,2,3,4 Amb,ET,BT,PT,PW
@@ -754,6 +819,7 @@ void eprmInit() {
 #endif  
   eprmFree = eprmSize - ( 6 * sizeof(float));  // Reserve floats: Kappa Gamma Beta Td Ti Kp 
 }
+
 void eprmInfo() {
     Serial.print(F("EEPROM Size: "));
     Serial.print(eprmSize);
@@ -778,6 +844,7 @@ void eprmInfo() {
     Serial.print(F(" Ka:"));
     Serial.println(fromEprm);
 }
+
 ///  Front Side Serial Interface to PC 'Processing' graphing app
 //
 #if IFAC_FRNT
@@ -793,7 +860,7 @@ void frntRecv() {
     } else {
       frntComm.asBytes[index-2] = Serial.read();
       //Serial.print("\nIndx:");
-      //Serial.print(index);
+      //Serial.g(index);
       //Serial.print(frntComm.asBytes[index]);
       //Serial.print("    ");
     }  
@@ -873,15 +940,14 @@ void lcdsInit() {
   lcd.print(F("@bitwisetech.com"));
   delay ( 2000 );                //  1000mS startup delay
   lcd.clear();
-  lcdsPrev  =  millis();
+  lcdsMark  =  millis() + LCDS_POLL_MSEC;
 }
 
 void lcdsLoop() {
-  currMSec = millis();
-  if ( LCDS_TOGO > (currMSec - lcdsPrev)) {
+  if (millis() < lcdsMark) {
     return;
-  } else {
-    lcdsPrev = currMSec;
+  } else {  
+    lcdsMark += LCDS_POLL_MSEC;
     //
     if (lcdstRctl == 0) {
       // Rctl == 0 Shutdown
@@ -926,10 +992,10 @@ void discCbck() {
 }
 
 void publCbck() {
-  if ( 0 ) {
+  //if ( 0 ) {
   //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-    Serial.println("popc publCbck");
-  }  
+  //  Serial.println("popc publCbck");
+  //}  
 }
 
 void dataCbck(String& topic, String& data) {
@@ -1020,6 +1086,7 @@ void wrapPubl( const char * tTops , const char * tVals, int tInt ) {
 #if PROC_ESP  
   rCode = 998;
 #if WIFI_MQTT  
+  rCode = 997;
   rCode = popcMqtt.publish( (const char * )tTops , (const char * )tVals, tInt );
 #endif
 #endif
@@ -1034,6 +1101,7 @@ void wrapPubl( const char * tTops , const char * tVals, int tInt ) {
   //delay(100);
 }    
 
+//pupSub / ESP ticker callbacks and service 
 void cbck1000() {
   if ( 0 ) {
   //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
@@ -1074,7 +1142,7 @@ void cb20Svce() {
   //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
     //Serial.println("cb20Svce");
   int rCode = 0;
-  // Artisan interface                                        'Read' Cmd; Send Ambient:Targ:Sens:Prof:Duty
+  // Artisan interface                      'Read' Cmd; Send Ambient:Targ:Sens:Prof:Duty
   if ( userScal == fahrScal) {
     dtostrf( floatCtoF(ambiTmpC), 5, 1, mqttVals);
   } else {
@@ -1118,10 +1186,6 @@ void cb20Svce() {
   //
   dtostrf( stepSecs, 8, 3, mqttVals);
   wrapPubl( psecTops, (const char * )(mqttVals), sizeof(mqttVals) );
-  //
-  dtostrf( pidcElap, 9, 3, mqttVals);
-  //dtostrf( (100*(Epn-Epn1)), 8, 3, mqttVals);
-  wrapPubl( TlapTops, (const char * )(mqttVals), sizeof(mqttVals) );
   //
   dtostrf( pidcUn, 8, 3, mqttVals);
   wrapPubl( (const char * )UnTops, (const char * )(mqttVals), sizeof(mqttVals) ); 
@@ -1206,81 +1270,99 @@ void popcSubs() {
   wrapSubs( TdTops );
   wrapSubs( BetaTops );
   wrapSubs( GammaTops );
-  //wrapSubs( TlapTops );
   wrapSubs( userTops );
 }  
 
-/// Off-On SSR driver 
+/// Off-On SSR driver mill 
 //
-void offnInit() {
-  offnPrev = millis();
-  offnCntr = 0;
-  pinMode( LED_ONBRD, OUTPUT);
-  pinMode( OFFN_OPIN,   OUTPUT);
+// Wrap writes to OFFN_PIN with TWIO Out 
+void offnDrve ( byte tPin, byte tVal) {
+  digitalWrite( tPin, tVal);
+#if WITH_PCF8574
+  twioWritePin( OFFN_TWPO, tVal);
+#endif  
 }  
 
-void offnLoop() {
-  currMSec = millis();
-  if ( OFFN_TOGO > ( currMSec - offnPrev )) {
+void millInit() {
+  millStep = 0;
+  adc0Curr = adc0Prev = adc0Maxi = adc0Mini = 0;
+  pinMode( OFFN_OPIN, OUTPUT);
+  pinMode( SCOP_OPIN, OUTPUT);
+  millMark = micros() + MILL_POLL_USEC;
+  adc0Poll = ADC0_POLL_MILL;
+  adc0Mark = ADC0_POLL_MILL;
+}  
+
+void millLoop() {
+  // UNO nonExec: 8uS at 28uSec with 602/882uSec idle (pcf/not) exec: 400u/96Sec(pcf/not)
+  // ESP 
+  if ( micros() <= millMark ) {
     return;
   } else {
-    offnPrev = currMSec;
-    //
-    if (!( offnRctl & RCTL_RUNS )) {
-      return; 
-    } else {
-      // RCTL_RUNS runs Off/On Loop for LED indicator, RCTL_AUTO drives output pin
-      if (offnCntr >= 100 ) {
-        offnCntr = 0;
-      } else {
-        offnCntr += 1;
+    millStep += 1;
+    millMark +=  MILL_POLL_USEC;
+    // mill        
+    // max mill rate 5uSec per on-off
+    if ( !(millStep % 1000) )  {
+      if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+        Serial.print  ("adc0:");  Serial.print  (adc0Curr);
+        Serial.print  (" Maxi:"); Serial.print  (adc0Maxi);
+        Serial.print  (" Mini:"); Serial.print  (adc0Mini);
+        Serial.print  (" Avge:"); Serial.println(adc0Avge);
+      }
+    }  
+    if ( ( pwmdPcnt * 8 )  > ( millStep % 833 ) ) {
+      //use Outp as trig to avoid repeated i/o traffic, set on: offn mark time 
+      if (offnOutp == 0) {
+        offnOutp = 1;
+        offnRctl |=  RCTL_ATTN;  // for virt tcpl
+        digitalWrite( ONBD_OPIN, (1 & ~ONBD_LOWON));
+        if ( offnRctl & RCTL_AUTO) {
+          offnDrve ( OFFN_OPIN,   1);
+        }  
       }  
-      switch ( pwmdPcnt) {
-        case 0:
-          //Serial.println("offnlLoop Case 0 ");
-          offnOutp = 0;
-          offnRctl &= ~RCTL_ATTN;
-          digitalWrite( LED_ONBRD, (0 | LED_LOWON));
-          if ( offnRctl & RCTL_AUTO) digitalWrite( OFFN_OPIN,   0);
-        break; 
-        case 100: 
-          //Serial.println("offnlLoop Case 100 ");
-          offnOutp = 1;
-          offnRctl |=  RCTL_ATTN;
-          digitalWrite( LED_ONBRD, (1 & ~LED_LOWON));
-          if ( offnRctl & RCTL_AUTO) digitalWrite( OFFN_OPIN,   1);
-        break; 
-        default: 
-          if (offnCntr > pwmdPcnt ) {
-            //Serial.print("offnlLoop Case dflt is On Cntr:");
-            //Serial.print(offnCntr);
-            //Serial.print(" pwmdPcnt:");
-            //Serial.print(pwmdPcnt);
-            //Serial.println(" ");
-            //output is on, switch it off, set space time 
-            offnOutp = 0;
-            offnRctl &= ~RCTL_ATTN;
-            digitalWrite( LED_ONBRD, (0 | LED_LOWON));
-            if ( offnRctl & RCTL_AUTO) digitalWrite( OFFN_OPIN,   0);
-          } else {
-            //Serial.print("offnlLoop Case dflt is Off Cntr:");
-            //Serial.print(offnCntr);
-            //Serial.print(" pwmdPcnt:");
-            //Serial.print(pwmdPcnt);
-            //Serial.println(" ");
-          //output is off, switch it on,  set space time 
-            offnOutp = 1;
-            offnRctl |=  RCTL_ATTN;
-            digitalWrite( LED_ONBRD, (1 & ~LED_LOWON));
-            if ( offnRctl & RCTL_AUTO) digitalWrite( OFFN_OPIN,   1);
+    } else {
+      if (offnOutp == 1) {
+      //use Outp as trig to avoid repeated i/o traffic, set off: offn space time 
+        offnOutp = 0;
+        offnRctl &= ~RCTL_ATTN;  // for virt tcpl
+        digitalWrite( ONBD_OPIN, (0 | ONBD_LOWON));
+        if ( offnRctl & RCTL_AUTO) {
+          offnDrve ( OFFN_OPIN,   0);
         }
-        break;  
-      }
-      // flicker tell tale LED in case of fast PWM
-      if ( (!(offnRctl & RCTL_AUTO)) && !(offnCntr % 4)) {
-        digitalWrite( LED_ONBRD, (0 | LED_LOWON));
-      }
-    }    
+      }    
+    }  
+    // flicker tell tale LED in case of fast PWM
+    if ( (offnRctl & RCTL_AUTO) && (millStep & 32)) {
+      digitalWrite( ONBD_OPIN, (0 | ONBD_LOWON));
+    }
+    // AD
+#if PROC_ESP
+    if ( millStep >= adc0Mark ) {
+      adc0Mark += adc0Poll;
+      adc0Prev = adc0Curr;
+      adc0Curr = analogRead(A0);
+      adc0Maxi = (adc0Curr > adc0Maxi) ? (adc0Maxi / 2 + adc0Curr / 2) : adc0Maxi;
+      adc0Mini = (adc0Curr < adc0Mini) ? (adc0Mini / 2 + adc0Curr / 2) : adc0Mini;
+      adc0Avge = adc0Mini / 2  + adc0Maxi / 2 ;
+      if ( adc0Maxi >    0 ) adc0Maxi -= 1 ;
+      if ( adc0Mini < 1024 ) adc0Mini += 1 ;
+#if WITH_PCF8574
+      // save bit0 as flag for i2c traffic only on change   
+      if (adc0Curr > adc0Prev) {
+        if (!adc0Bit0) {
+          adc0Bit0 = 1;
+          twioWritePin( ADC0_TWPO, adc0Bit0);
+        }  
+      } else {
+        if (adc0Bit0) {
+          adc0Bit0 = 0;
+          twioWritePin( ADC0_TWPO, adc0Bit0);
+        }
+      }    
+#endif 
+    }   
+#endif //PROC_ESP
   }
 }    
     
@@ -1377,7 +1459,7 @@ void pidcInit() {
   pidcFprm();
   // first time being enabled, seed with current property tree value
   Un1 = Un = 0;
-  pidcPrev =  millis();
+  pidcMark =  millis() + PIDC_POLL_MSEC;
   targTmpC = int(ambiTmpC);
 }
 
@@ -1398,13 +1480,8 @@ void pidcInfo() {
 }  
 //
 void pidcLoop() {
-  currMSec = millis();
-  pidcElap = currMSec - pidcPrev;
-  if ( PIDC_TOGO > pidcElap ) {
-    return;
-  } else {
-    // save this currMSec as time of service
-    pidcPrev = currMSec;
+  if ( millis() < pidcMark ) return; else {
+    pidcMark += PIDC_POLL_MSEC;  
     //
     if ( (pidcRctl & RCTL_RUNS)  == 0 ) {
       // Poll/Thermocouple == 0 Shutdown
@@ -1414,8 +1491,7 @@ void pidcLoop() {
       Un = 0;
     } else {
       // 
-      //Ts = (PIDC_POLL_MSEC - (float)pidcTogo) / 1000000.0; // sample interval (Sec)
-      Ts = (float)pidcElap / 1000.0;
+      Ts = (PIDC_POLL_MSEC / 1000.0); // sample interval (Sec)
       // 
       pidcRn = (float)targTmpC;
       pidcYn = (float)sensTmpC;
@@ -1545,20 +1621,16 @@ void pidcDbug() {
 //      hTemp ctive:                    : skip to sequencer end
 //      ramp (else ~zero && ~active)    : start active ramp, skip to sequencer end
 //      
-
 void profInit() {
   // simulation
   prevTmpC = sensTmpC = holdTmpC = int(ambiTmpC);
   stepSecs = totlSecs = 0;
-  profPrev =  millis();
+  profMark =  millis() + PROF_POLL_MSEC;
 }
 
 void profLoop() {
-  currMSec = millis();
-  if ( PROF_TOGO >  (currMSec - profPrev)) {
-    return;
-  } else {
-    profPrev = currMSec;
+  if ( millis() < profMark) return; else { 
+    profMark += PROF_POLL_MSEC;  
     // apply PID gain compensation if non-zero
     if ( pidcKappa > 0 ) {
       pidcKc = pidcKp * ( 1 + pidcKappa * ( sensTmpC - idleTmpC ) / idleTmpC );
@@ -1733,9 +1805,10 @@ void pwmdSetF( double newFreq) {
 #if PROC_ESP
   //tbd   
   analogWriteFreq(newFreq);
-#else 
-#endif 
   pwmdFreq = int(newFreq);
+#else 
+  pwmdFreq = PWMD_FREQ;
+#endif 
 }
 
 void pwmdInit() {
@@ -1744,21 +1817,14 @@ void pwmdInit() {
   pinMode( PWMD_OPIN, PWMD_MODE);
 #if PROC_ESP
   analogWriteRange(255);
-  //
-  analogWriteFreq(32);
 #endif  
-#if PROC_UNO  
-  pwmdExpo(10);
-#endif  
-  pwmdPrev  =  millis();            // pwm drvr poll period mSec
+  pwmdSetF( PWMD_FREQ);			
+  pwmdMark =  millis() + PWMD_POLL_MSEC;
 }
 
 void pwmdLoop() {
-  currMSec = millis();
-  if ( PWMD_TOGO > (currMSec - pwmdPrev)) {
-    return;
-  } else {
-    pwmdPrev = currMSec;
+  if ( millis() < pwmdMark ) return; else { 
+    pwmdMark += PWMD_POLL_MSEC;  
     //
     if ( (pwmdRctl & RCTL_RUNS) == 0) {
       if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
@@ -1780,10 +1846,7 @@ void pwmdLoop() {
       }
       pwmdOutp = byte (pwmdTarg + 0.5);
       pwmdPcnt = byte ((100.0 * pwmdOutp / 255) +0.5);
-      if ( !(offnRctl & RCTL_AUTO)) {
-        // Off/On not RCTL_AUTO means use fast analog PWM
-        analogWrite( PWMD_OPIN, pwmdOutp);
-      } 
+      analogWrite( PWMD_OPIN, pwmdOutp);
     }  
   }  
 }
@@ -1791,7 +1854,7 @@ void pwmdLoop() {
 /// Rotary 16Way Enc Switch 
 //
 int rotsValu() {
-  int resp;
+  int resp, tVal;
   //Serial.print("B3:");
   //Serial.print(digitalRead(ROTS_BIT3));
   //Serial.print(" B2:");
@@ -1807,6 +1870,13 @@ int rotsValu() {
   if ( digitalRead(ROTS_BIT1) == LOW  ) resp += 2; 
   if ( digitalRead(ROTS_BIT0) == LOW  ) resp += 1; 
 #endif
+#if WITH_PCF8574
+  tVal = (~(twioRead8() & TWIO_IMSK) ); 
+  resp  = tVal & 0x08;
+  if ( tVal & 0x04) resp += 2;
+  if ( tVal & 0x02) resp += 4;
+  if ( tVal & 0x01) resp += 8;
+#endif
   return(resp);
 }
     
@@ -1818,15 +1888,12 @@ void rotsInit() {
   pinMode( ROTS_BIT1, INPUT_PULLUP);
   pinMode( ROTS_BIT0, INPUT_PULLUP);
 #endif
-  rotsPrev =  millis();
+  rotsMark =  millis() + ROTS_POLL_MSEC;
 }
     
 void rotsLoop() {
-  currMSec = millis();
-  if ( ROTS_TOGO > (currMSec - rotsPrev)) {
-    return;
-  } else {
-    rotsPrev = currMSec;
+  if (millis() < rotsMark) return; else {
+    rotsMark += ROTS_POLL_MSEC;
     // Only process consecutive new steady value 
     byte rotsTemp = rotsValu();
     if ( rotsTemp != rotsNewb) {
@@ -1846,12 +1913,10 @@ void rotsLoop() {
           case 0:
             stepNmbr = 0;
             userCmdl = "W0";
-            strstr(userChrs, "W0");
           break;
           case 1:
             stepNmbr = 1;
             userCmdl = "R5";
-            strstr(userChrs, "");
           break;
           case 2:
             stepNmbr = 2;
@@ -1871,7 +1936,7 @@ void rotsLoop() {
           break;
           case 6:
             stepNmbr = 6;
-            userCmdl = "R40";
+            userCmdl = "R45";
           break;
           case 7:
             stepNmbr = 7;
@@ -1883,7 +1948,7 @@ void rotsLoop() {
           break;
           case 9:
             stepNmbr = 9;
-            userCmdl = "W93";
+            userCmdl = "W95";
           break;
           case 10:
             stepNmbr = 10;
@@ -1903,11 +1968,11 @@ void rotsLoop() {
           break;
           case 14:
             stepNmbr = 14;
-            userCmdl = "W52";
+            userCmdl = "W50";
           break;
           case 15:
             stepNmbr = 15;
-            userCmdl = "W45";
+            userCmdl = "W40";
           break;
         }  
         userRctl |= RCTL_ATTN; 
@@ -1916,7 +1981,7 @@ void rotsLoop() {
   }
 }    
     
-/// THERMOCOUPLE
+/// Thermocouple
 // 
 void tcplInit() {
   // stabilize wait .. lcds banner is 1000mA anyway
@@ -1928,23 +1993,20 @@ void tcplInit() {
   Serial.println("tcpl.begin");
 #endif
 #endif
-  tcplPrev = vtcpPrev = millis();
+  tcplMark = millis() + TCPL_POLL_MSEC;
+  vtcpMark = millis() + VTCP_POLL_MSEC;
   sensTmpC = ambiTmpC;
 }
 
 void virtTcplLoop() {
   int pwmdMavg;
   float heatInpu = 0; 
-  currMSec = millis();
-  if (( VTCP_TOGO ) > (currMSec - vtcpPrev)) {
-    return;
-  } else {
-    vtcpPrev = currMSec;
+  if ( millis() < vtcpMark ) return; else {
+    vtcpMark += VTCP_POLL_MSEC;
     // virt tcpl 
     if ( offnRctl & RCTL_AUTO) {
       if (offnRctl & RCTL_ATTN ) {
         heatInpu = 255;     
-        
       } else {
         heatInpu = 0;
       }    
@@ -2014,18 +2076,15 @@ void virtTcplLoop() {
     heatHist[2]  = heatHist[1]; 
     heatHist[1]  = heatHist[0]; 
     heatHist[0]  = heatInpu;
-  }  
-}    
+  }
+}
 
 #if WITH_MAX31855
 void tcplRealLoop() {
   double tcplTmpC;
   byte tResp = 0;
-  currMSec = millis();
-  if ( TCPL_TOGO > (currMSec - tcplPrev)) {
-    return;
-  } else {
-    tcplPrev = currMSec;
+  if ( millis() < tcplMark) return; else {
+    tcplMark += TCPL_POLL_MSEC;
     //
     if (tcplRctl== 0) {
       // Rctl == 0 Shutdown
@@ -2038,17 +2097,18 @@ void tcplRealLoop() {
 #if PROC_ESP
       // read() gets both status and temp 
       tResp    = tcpl.read();
-      if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+      if ( 0 ) {
+      // block tcpl diags if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
         Serial.print("tcpl Stat:");
-        Serial.print(tcpl.getStatus);
+        Serial.print(tcpl.getStatus());
         Serial.print(" Fctr:");
-        Serial.print(tcpl.getTCFactor);
+        Serial.print(tcpl.getTCfactor());
         Serial.print(" Ofst:");
-        Serial.print(tcpl.getOffset);
+        Serial.print(tcpl.getOffset());
         Serial.print(" ITmp:");
-        Serial.print(tcpl.getInternal);
+        Serial.print(tcpl.getInternal());
         Serial.print(" TdegC:");
-        Serial.println(tcpl.getTemperature);
+        Serial.println(tcpl.getTemperature());
       }  
       // getTemperature returns internal variable from read()
       tcplTmpC = tcpl.getTemperature();
@@ -2066,55 +2126,51 @@ void tcplRealLoop() {
         lcd.print(F("thermoCouple : "));
         lcd.setCursor ( 0, 1 );
 #endif
-        if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+       if ( 0 ) {
+          // block tcpl diags if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
           Serial.print(" Sense: ");
         }  
         switch ( tResp ) {
-          case 0: {
+          case 0:
 #if WITH_LCD
             lcd.println("STATUS_OK      ");
 #endif
-            if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-              Serial.println("OK");
+            if ( 0 & !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+                Serial.println("OK");
             }
-          }
           break;  
-          case 1: {
+          case 1:
 #if WITH_LCD
             lcd.println("Error - Open-Cct");
 #endif
-            if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-              Serial.println("Open-Cct");
+            if ( 0 & !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+                Serial.println("Open-Cct");
             }
-          }
           break;  
-         break;  
-          case 2: {
+          case 2:
 #if WITH_LCD
             lcd.println("Error - Shrt-Gnd");
 #endif
-            if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+            if ( 0  & !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
               Serial.println("Shrt-Gnd");
             }
-          }
           break;  
-          case 4: {
+          case 4:
 #if WITH_LCD
             lcd.println("Error - Shrt-Vcc");
 #endif
-            if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+            if (0 & !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
               Serial.println("Shrt-Vcc");
             }
-          }
           break;  
-          default:  {
+          default:
 #if WITH_LCD
             lcd.println("Error - NReadEtc");
 #endif
-            if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+            if ( 0 & !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
               Serial.println("FailCase-NOREAD");
             }
-          }
+          break;  
         }
 #if WITH_LCD
         delay (500);
@@ -2130,6 +2186,45 @@ void tcplRealLoop() {
   }  
 }  
 #endif // WITH_MAX31855
+
+//
+// PCF8574 I2C IO 
+#if WITH_PCF8574
+void twioInit() {
+  twio.begin();
+}
+
+int twioRead8() {
+  //
+  digitalWrite( SCOP_OPIN, 1);
+  twioWrite8( 0xFF & TWIO_IMSK );
+  twioCurr = twio.read8();
+  //
+  digitalWrite( SCOP_OPIN, 0);
+  //twioWrite8( 0xFF & TWIO_IMSK );  
+  //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+  //  Serial.print("twioRead8:");
+  //  Serial.println(twioCurr);
+  //}  
+  return twioCurr;
+}
+
+void twioWrite8( byte tByt ) {
+  twio.write8( tByt);
+  //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+  //  Serial.print("twioWrite8: ");
+  //  Serial.println(tByt);
+  //}  
+}
+
+void twioWritePin( byte tPin, byte tByt) {
+  twio.write( tPin, tByt);
+  //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+  //  Serial.print("twioWritePin: ");
+  //  Serial.println(tByt);
+  //}  
+}
+#endif // WITH_PCF8574
 
 /// User Interface 
 //
@@ -2353,7 +2448,7 @@ void userSvce() {
     pidcInfo();
   }
   // o Readback PID operating parameters
-  if (userCmdl[0] == 'o') {
+  if (userCmdl[0] == 'q') {
     pidcInfo();
   }  
   if (((userCmdl[0] == 'R') || (userCmdl[0] == 'r')) && (userCmdl[1] != 'E')) {
@@ -2397,6 +2492,17 @@ void userSvce() {
     pwmdRctl &= ~RCTL_MANU;
     pwmdRctl |=  RCTL_AUTO;
   }
+  if ((userCmdl[0] == 'U')                        ) {
+    // set new PWM frequency 
+    pwmdFreq = (userCmdl.substring(1)).toInt();
+    pwmdSetF( pwmdFreq);
+  }
+  if ((userCmdl[0] == 'U') || (userCmdl[0] == 'u')) {
+    if  (!( bbrdRctl & RCTL_ARTI )) {
+      Serial.print("pwmdFreq: ");
+      Serial.println(pwmdFreq);
+    }  
+  }
   if ((userCmdl[0] == 'V') || (userCmdl[0] == 'v')) {
     // Version string e if Artisan is setting Unit C/F 
     if  (!( bbrdRctl & RCTL_ARTI )) {
@@ -2425,12 +2531,6 @@ void userSvce() {
     // manual pwm will apply in pwmd loop; unset manual ramp ctrl 
     rampCdpm = 0;
   }
-  if ((userCmdl[0] == 'Y') || (userCmdl[0] == 'y')) {
-    if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-      // set new PWM frequency 
-      //Serial.println("Pwm frequency control TBD");
-    }  
-  }
   if ((userCmdl[0] == 'Z') || (userCmdl[0] == 'z')) {
     // Zero 'Total Time' 
     totlSecs = 0;
@@ -2457,8 +2557,11 @@ void setup() {
   tcplInit();
   pidcInit();
   pwmdInit();
-  offnInit();
+  millInit();
   profInit();
+#if WITH_PCF8574
+  twioInit();
+#endif
 #if PROC_ESP
   if (wifiRctl & RCTL_RUNS) {
     if ( (bbrdRctl & RCTL_ARTI) == 0) {
@@ -2544,12 +2647,10 @@ void setup() {
 #endif
   }  
 
-  //  Tick setup 
-  //  Sked setup
+  //
   //    TickerScheduler(uint size);
   //    boolean add(uint i, uint32_t period, tscallback_t f, boolean shouldFireNow = false);
   //      ts.add(0, 3000, sendData)
-  // 
   int shedRcod;
   shedRcod = popcShed.add( 0, 1000, cbck1000);
   shedRcod = popcShed.add( 1, 2000, cbck2000);
@@ -2569,6 +2670,21 @@ void setup() {
 //
 void loop() {
   // put your main code here, to run repeatedly:
+  millLoop();
+  pidcLoop();
+  pwmdLoop();
+  profLoop();
+  rotsLoop();
+#if WITH_MAX31855
+  tcplRealLoop();
+#else  
+  virtTcplLoop();
+#endif
+#if WITH_LCD
+  lcdsLoop();
+#endif 
+  userLoop();
+  //
   if (cb10Rctl & RCTL_ATTN) {
     cb10Svce();
   }  
@@ -2578,33 +2694,18 @@ void loop() {
   if (cb90Rctl & RCTL_ATTN) {
     cb90Svce();
   }  
-#if WITH_MAX31855
-  tcplRealLoop();
-#else  
-  virtTcplLoop();
-#endif
-  pidcLoop();
-  pwmdLoop();
-  offnLoop();
-  rotsLoop();
-  //
   if (userRctl & RCTL_ATTN) {
     userSvce();
   }  
-  userLoop();
   if (userRctl & RCTL_ATTN) {
     userSvce();
   }  
-  profLoop();
 #if PROC_ESP
   popcShed.update();
 #if WIFI_SOKS
   webSocket.loop(); 
 #endif  
 #endif  
-#if WITH_LCD
-  lcdsLoop();
-#endif 
   //frntLoop();
   // Why delay(10);
 }
