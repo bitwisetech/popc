@@ -181,8 +181,6 @@
 //digitalWrite( SCOP_OPIN, 0);
 //digitalWrite( SCOP_OPIN, 1);
 //digitalWrite( SCOP_OPIN, 0);
-//digitalWrite( SCOP_OPIN, 1);
-//digitalWrite( SCOP_OPIN, 0);
 //
 #endif   // PROC_ESP
 
@@ -1101,8 +1099,9 @@ void dataCbck(String& topic, String& data) {
   //char * charPntr = strncpy (userChrs, "userCmdl");
   if (topiIndx >= 0){
     // copy data into user command line
-    userCmdl = data.c_str();
-    // strncpy(userChrs, data.c_str(), sizeof(userChrs));
+    //
+    userCmdl = data;
+    //strncpy(userChrs, data.c_str(), sizeof(userChrs));
     // //test 
     userRctl |= RCTL_ATTN; 
     //if ( 0 ) {
@@ -2276,10 +2275,12 @@ void userSvce() {
   wrapPubl( echoTops, userCmdl.c_str(), sizeof(userCmdl)); 
 #endif  
   if ( bbrdRctl & RCTL_ARTI ) {
+//
+digitalWrite( SCOP_OPIN, 1);
     // Artisan CHAN command 
     if ((userCmdl[0] == 'C') && (userCmdl[1] == 'H') && (userCmdl[2] == 'A')) {
       //  'chan' command, respond '#'
-      //Serial.println("# ");
+      Serial.println("#");
     }  
     if ((userCmdl[0] == 'I') && (userCmdl[1] == 'O') && (userCmdl[2] == '3')) {
       // Cmd : IO3 
@@ -2562,6 +2563,8 @@ void userSvce() {
       Serial.println(userScal);
     }  
   }
+//
+digitalWrite( SCOP_OPIN, 0);
 }
 
 /// Arduino Setup 
