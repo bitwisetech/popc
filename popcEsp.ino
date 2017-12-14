@@ -86,15 +86,15 @@
 #define NEWP_UNO      0                  //   Uno new pins polly 
 #define PROC_ESP      1                  // Compile for ESP8266
 #define WITH_LCD      0                  // Hdwre has I2C 2x16 LCD display
-#define WITH_MAX31855 1                  // Hdwre has thermocouple + circuit
+#define WITH_MAX31855 0                  // Hdwre has thermocouple + circuit
 #define WITH_PCF8574  1                  // Hdwre has I2C I/O Extender      
-#define WITH_OFFN     1                  // Use ~250cy via mill Off-On SSR, not fast h/w PWM
-#define WIFI_MQTT     0                  // Compile for Wifi MQTT client
+#define WITH_OFFN     0                  // Use ~250cy via mill Off-On SSR, not fast h/w PWM
+#define WIFI_MQTT     1                  // Compile for Wifi MQTT client
 #define WIFI_SOKS     0                  // Compile for Wifi Web Sckt Srvr
 #define WIFI_WMAN     0                  // Compile for Wifi Manager
-#define IFAC_ARTI     0                  // Start with Artisan interface on Serial
+#define IFAC_ARTI     1                  // Start with Artisan interface on Serial
 #define IFAC_FRNT     0                  // Obsolete Front/Process interface on Serial 
-//
+///
 // UNO pin assignments
 #if PROC_UNO
 #if NEWP_UNO
@@ -127,7 +127,7 @@
 #define TWIO_SCL   3     // I2C SCL
 //
 #define SCOP_OPIN  2     // debug flag nixes SPI2_CSEL
-//
+///
 #else    // NOT NEWP_UNO
 //
 // Off/On SSR driver 
@@ -155,6 +155,7 @@
 #endif   // !NEWP_UNO
 #endif   // PROC_UNO
 
+///
 // ESP Pin Assignments 
 #if PROC_ESP
 // A/D 1v 10b on 
@@ -177,13 +178,16 @@
 #define TWIO_SCL   5     // I2C SCL
 // 
 #define SCOP_OPIN  13    // debug flag uses 'MOSI' line  
+//digitalWrite( SCOP_OPIN, 0);
+//digitalWrite( SCOP_OPIN, 1);
+//digitalWrite( SCOP_OPIN, 0);
 //digitalWrite( SCOP_OPIN, 1);
 //digitalWrite( SCOP_OPIN, 0);
 //
 #endif   // PROC_ESP
 
-/// WiFi preamble for ESP with Wifi Router ID, PW Info 
-// 
+///
+//   WiFi preamble for ESP with Wifi Router ID, PW Info 
 #if PROC_ESP
 #include <Adafruit_ESP8266.h>
 //
@@ -202,8 +206,10 @@ const char* upwdPwrd = "manchester1102190tan";
 //const char* dnwdPwrd = "summerseat";
 //const char* upwdSsid = "cherib";
 //const char* upwdPwrd = "sUmMeRsEaT";
-//const char* upwdSsid = "inactive";
-//const char* upwdPwrd = "pickledcrab1102190";
+//
+const char* dnwdSsid = "inactive";
+//
+const char* dnwdPwrd = "pickledcrab1102190";
 //const char* upwdSsid = "bitwComc";
 //const char* upwdPwrd = "tWiStEdTeA";
 // wifiManager.autoConnect("upwdSsid", "password");
@@ -228,8 +234,12 @@ const char* upwdPwrd = "manchester1102190tan";
 #define MQCL_ID "popc"
 //  Mqtt
 // create MQTT object with IP address, port of MQTT broker e.g.mosquitto application
-// 
-MQTT myMqtt(MQCL_ID, "test.mosquitto.org", 1883);
+// MQTT myMqtt(MQCL_ID, "test.mosquitto.org", 1883);
+// MQTT myMqtt(MQCL_ID, "test.mosquitto.org", 1883);
+//
+//MQTT popcMqtt(MQCL_ID, "myPCwithPaho", 1883);
+MQTT popcMqtt(MQCL_ID, "172.20.224.119", 5983);
+
 #endif  // WIFI_MQTT
 
 //Jn01 WifiManager 
@@ -331,7 +341,7 @@ MAX31855 tcpl(TCPL_CLCK, TCPL_CSEL, TCPL_MISO);
 #define SPAR       7     // mill fast io          prt 7  pin 12
 #include "PCF8574.h"
 void twioInit(void);
-int  twioRead8(void);
+byte twioRead8(void);
 void twioWritePin(byte, byte);
 void twioWrite8(byte);
 PCF8574 twio( TWIO_ADDX );
@@ -346,7 +356,6 @@ float   ambiTmpC  = 28;                    //  28C  82F rm temp then W0 + fan ht
 
 // A/D Chan 0 
 long adc0Curr, adc0Prev, adc0Maxi, adc0Mini, adc0Avge, adc0Bit0; 
-
 
 // Artisan 40+ char serial pkt: ambient, ch1, ch2, ch3, ch4 or Logging Tt Ts BT ET SV Duty
 char artiResp[] = "023.0,128.8,138.8,000.0,000.0          ";  // 39 + null
@@ -397,6 +406,7 @@ int eprmSize, eprmFree;
 // mqtt strings are declared for both ESP8266 and UNO 
 char mqttVals[] =  "                ";                     // mqtt value 16sp 15ch max
 // General Info topics 
+const char adc0Tops[]  = "/popc/adc0Curr";
 const char c900Tops[]  = "/popc/cbck9000";
 const char echoTops[]  = "/popc/echoCmdl";
 const char inf0Tops[]  = "/popc/bbrdLin0";
@@ -409,7 +419,7 @@ const char dgpmTops[]  = "/popc/sensDgpm";
 const char userTops[]  = "/popc/userCmdl";
 // Artisan interface UC names  'Read' Cmd; Send Ambient:Targ:Sens:Prof:Duty
 const char AmbiTops[]  = "/popc/arti/ATmp";
-const char ArspTops[]  = "/popc/arti/Read";
+const char ArspTops[]  = "/popc/arti/Arsp";
 const char ETmpTops[]  = "/popc/arti/ETmp";
 const char BTmpTops[]  = "/popc/arti/BTmp";
 const char PTmpTops[]  = "/popc/arti/PTmp";
@@ -430,13 +440,6 @@ const char GammaTops[] = "/popc/pidc/Gamma";
 const char KappaTops[] = "/popc/pidc/Kappa";
 
 //pidc
-#if DONT_WITH_OFFN
-// Slow response PID to match 4sec cycle of SSR Off-On nah 
-float pidcKp      =   6.000;              // P-Term gain
-float pidcKc      =   6.000;              // P-Term gain
-float pidcTi      =   1.000;              // I-Term Gain sec ( Ti++ = Gain--)
-float pidcTd      =   0.200;              // D-Term Gain sec ( Td++ = Gain++)
-#else
 //Ap15
 // Fast response PID to match approx 30Hz PWM frequency 
 //  Date  Kp      Ti      Td      Beta      Gamma 
@@ -461,7 +464,6 @@ float pidcKp    =   2.500;                // P-Term gain
 float pidcKc    =   2.500;                // P-Term gain
 float pidcTi    =   4.000;                // I-Term Gain sec ( Ti++ = Gain--)
 float pidcTd    =   0.250;                // D-Term Gain sec ( Td++ = Gain++)
-#endif
 //
 float pidcBeta    =   2.000;              // P-term Refr vs YInp
 float pidcGamma   =   1.000;              // D-term Refr vs YInp
@@ -479,10 +481,8 @@ float Tf, Ts, TsDivTf              = 0.0; // Filter, Actual sample period, stash
 float pidcPn, pidcIn, pidcDn       = 0.0; // per sample P-I-D-Err Terms
 float pidcPc, pidcIc, pidcDc       = 0.0; // cumulative P-I-D components 
 float pidcUn = 0.0;                       // PID controller Output
-
 // 
 const char versChrs[] = "2017SDc05-TWIO";
-
 // profiles
 //   stored as profiles 1-9 with steps 0-9 in each 
 typedef struct profTplt {
@@ -490,7 +490,7 @@ typedef struct profTplt {
   float profRMin;                         // Ramp time to TargTemp decimal minutes
   float profHMin;                         // Hold time at TargTemp decimal minutes 
 }; 
-
+//
 profTplt profLine = { idleTmpC, 0, 99 };
 //
 #define EADX_PROF 0                       // EEPROM starting address of stored profiles
@@ -584,7 +584,9 @@ void connCbck();
 void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t lenght) {
   switch(type) {
     case WStype_DISCONNECTED:
-      USE_SERIAL.printf("[%u] popcSockSrvr Disconnected!\n", num);
+      if ( !( bbrdRctl & RCTL_ARTI ) ) {
+        USE_SERIAL.printf("[%u] popcSockSrvr Disconnected!\n", num);
+      }  
     break;
     case WStype_CONNECTED: {
       IPAddress ip = webSocket.remoteIP(num);
@@ -596,7 +598,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t lenght
     }
     break;
     case WStype_TEXT:
-      //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+      //if ( !(  Rctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
       if ( !( bbrdRctl & RCTL_ARTI ) ) {
         USE_SERIAL.printf("popcSockSrvr [%u] get Text: %s\n", num, payload);
       }  
@@ -607,7 +609,9 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t lenght
       // webSocket.broadcastTXT("popcSockSrvr message here");
     break;
     case WStype_BIN:
-    USE_SERIAL.printf("[%u] popcSockSrvr get binary length: %u\n", num, lenght);
+    if ( !( bbrdRctl & RCTL_ARTI ) ) {
+      USE_SERIAL.printf("[%u] popcSockSrvr get binary length: %u\n", num, lenght);
+    }  
     hexdump(payload, lenght);
 
     // send message to client
@@ -662,24 +666,52 @@ byte nibl2Hex ( byte tNibl){
 /// Billboard LCDisplay and Serial info Lines 
 void  bbrdArti() {
   //// Artisan Iface : resp 'READ' = Amb,Ch1,2,3,4 Amb,ET,BT,PT,PW
-  //Je 15 to get SV/Duty into Config-Device-Extra TC4Ch3-4  send Amb ET, BT SV, D% 
+  // Je 15 to get SV/Duty into Config-Device-Extra TC4Ch3-4  send Amb ET, BT SV, D% 
   // Je15 Artisan Iface : resp 'READ' = Amb,Ch1,2,3,4 Ta,Te,Tb,Te,Du
   if ( userScal == fahrScal) {                                
-    dtostrf( floatCtoF(ambiTmpC), 5, 1, &artiResp[0]  );               // Art's Ta Chn
-    dtostrf( floatCtoF(targTmpC), 5, 1, &artiResp[6]  );               // ET
+    dtostrf( floatCtoF(ambiTmpC), 5, 1,  &artiResp[0]  );               // Art's Ta Ch
+    if (floatCtoF(ambiTmpC) < 100)      { artiResp[0]  = '0'; }
+    if (floatCtoF(ambiTmpC) <  10)      { artiResp[1]  = '0'; }
+    if (floatCtoF(ambiTmpC) <   1)      { artiResp[2]  = '0'; }
+    dtostrf( floatCtoF(targTmpC), 5, 1,  &artiResp[6]  );               // ET
+    if (floatCtoF(targTmpC) < 100)   { artiResp[6]  = '0'; }
+    if (floatCtoF(targTmpC) <  10)   { artiResp[7]  = '0'; }
+    if (floatCtoF(targTmpC) <   1)   { artiResp[8]  = '0'; }
     dtostrf( floatCtoF(sensTmpC), 5, 1, &artiResp[12] );               // BT
+    if (floatCtoF(sensTmpC) < 100)   { artiResp[12]  = '0'; }
+    if (floatCtoF(sensTmpC) <  10)   { artiResp[13]  = '0'; }
+    if (floatCtoF(sensTmpC) <   1)   { artiResp[14]  = '0'; }
     dtostrf( int(sensCdpm * 9.00 / 5.00 + 50 ), 5, 1, &artiResp[18] ); // SV  
+    if (floatCtoF(sensCdpm) < 100)   { artiResp[18]  = '0'; }
+    if (floatCtoF(sensCdpm) <  10)   { artiResp[19]  = '0'; }
+    if (floatCtoF(sensCdpm) <   1)   { artiResp[20]  = '0'; }
   } else {
     dtostrf(           ambiTmpC,  5, 1, &artiResp[0]  );               // AT
+    if (ambiTmpC < 100)   { artiResp[0]  = '0'; }
+    if (ambiTmpC <  10)   { artiResp[1]  = '0'; }
+    if (ambiTmpC <   1)   { artiResp[2]  = '0'; }
     dtostrf(           targTmpC,  5, 1, &artiResp[6]  );               // ET
+    if (targTmpC < 100)   { artiResp[6]  = '0'; }
+    if (targTmpC <  10)   { artiResp[7]  = '0'; }
+    if (targTmpC <   1)   { artiResp[8]  = '0'; }
     dtostrf(           sensTmpC,  5, 1, &artiResp[12] );               // BT
+    if (sensTmpC < 100)   { artiResp[12]  = '0'; }
+    if (sensTmpC <  10)   { artiResp[13]  = '0'; }
+    if (sensTmpC <   1)   { artiResp[14]  = '0'; }
     dtostrf( int(sensCdpm + 50   ), 5, 1, &artiResp[18] );             // SV
+    if (sensCdpm < 100)   { artiResp[18]  = '0'; }
+    if (sensCdpm <  10)   { artiResp[19]  = '0'; }
+    if (sensCdpm <   1)   { artiResp[20]  = '0'; }
   } 
   dtostrf(           pwmdPcnt,  5, 1, &artiResp[24] );                 // DU
+    if (pwmdPcnt < 100)   { artiResp[24]  = '0'; }
+    if (pwmdPcnt <  10)   { artiResp[25]  = '0'; }
+    if (pwmdPcnt <   1)   { artiResp[26]  = '0'; }
   artiResp[5]  = ',';
   artiResp[11] = ',';
   artiResp[17] = ',';
   artiResp[23] = ',';
+  artiResp[39] = '\0';
 }  
 
 //
@@ -760,13 +792,14 @@ void bbrdFill() {
   bbrdLin1[10]   = 'm';
   bbrdLin1[11]  = ' ';
   // fill info for serial output either Artisan protocol or console Info/csv logging 
-  if ( bbrdRctl & RCTL_ARTI ) {
+  if (bbrdRctl & RCTL_ARTI ){
+    // nothing is done here, for Artisan response usercmdl == 'REA' does bbrdArti etc
+    // 12Dc fill the bbrd for mqtt but dont send serial 
     bbrdArti();
   } else {
-    // ~ARTI
-    //if ( !( bbrdRctl & RCTL_INFO ) && !(totlSecs % 2)) {
+    // ! RCTL_ARTI so use artiresp space to create csv response  
     if ( bbrdRctl & RCTL_INFO ) {
-      // ~ARTI &  INFO 
+      // ~ARTI &  INFO : Non-CSV tbd
     } else {
       // ~ARTI & ~INFO : csv logging for Artisan import Select 1s / Ns : TotMin:Sec StepMin:sec BT ET Event SV Duty
       dtostrf( (totlSecs / 60), 02, -0, &artiResp[0]);
@@ -983,11 +1016,12 @@ void discCbck() {
       Serial.println("discCbck : popcMqtt.connect pause  4 ..");
     }  
     popcMqtt.connect();
-    delay(4000);
+    delay(16000);
     if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-      Serial.println("WIFI_MQTT timeout : wait cbck cted & call popcMqtt.Subs");
+      Serial.println("Wifi Mqtt.connect timed out. calling popcSubs()");
     }  
-    // Je18 popcSubs();
+    //Je18     
+    popcSubs();
   #endif  
 }
 
@@ -1067,9 +1101,8 @@ void dataCbck(String& topic, String& data) {
   //char * charPntr = strncpy (userChrs, "userCmdl");
   if (topiIndx >= 0){
     // copy data into user command line
-    //
-    userCmdl = String(data);
-    //strncpy(userChrs, data, sizeof(userChrs));
+    userCmdl = data.c_str();
+    // strncpy(userChrs, data.c_str(), sizeof(userChrs));
     // //test 
     userRctl |= RCTL_ATTN; 
     //if ( 0 ) {
@@ -1103,10 +1136,9 @@ void wrapPubl( const char * tTops , const char * tVals, int tInt ) {
 
 //pupSub / ESP ticker callbacks and service 
 void cbck1000() {
-  if ( 0 ) {
   //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-    Serial.println("cbck1000 sets cb10Rctl ATTN");
-  }  
+  //  Serial.println("cbck1000 sets cb10Rctl ATTN");
+  //}  
   cb10Rctl |= RCTL_ATTN;
 }
 
@@ -1117,6 +1149,10 @@ void cb10Svce() {
   wrapPubl( (const char * )inf0Tops, (const char * )(bbrdLin0), sizeof(bbrdLin0) ); 
   wrapPubl( (const char * )inf1Tops, (const char * )(bbrdLin1), sizeof(bbrdLin1) ); 
   //
+  dtostrf( adc0Curr, 8, 3, mqttVals);
+  wrapPubl( (const char * )adc0Tops , (const char * )mqttVals, sizeof(mqttVals) ); 
+  wrapPubl( (const char * )ArspTops , (const char * )artiResp, sizeof(artiResp) ); 
+  //
   //if ( rCode) {
     //Serial.print("cbck1000 bad      RC: ");
     //Serial.println(rCode);
@@ -1126,14 +1162,10 @@ void cb10Svce() {
 }
 
 void cbck2000() {
-  dtostrf( pidcRn, 8, 3, mqttVals);
-  wrapPubl( (const char * )RnTops , (const char * )mqttVals, sizeof(mqttVals) ); 
-  //
-  dtostrf( pidcYn, 8, 3, mqttVals);
-  wrapPubl( (const char * )YnTops, (const char * )(mqttVals), sizeof(mqttVals) ); 
-  //
-  dtostrf( pidcEn, 8, 3, mqttVals);
-  wrapPubl( (const char * )EnTops, (const char * )(mqttVals), sizeof(mqttVals) ); 
+  if ( 0 ) {
+  //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+    Serial.println("cbck200 sets cb10Rctl ATTN");
+  }  
   //
   cb20Rctl |= RCTL_ATTN;
 }
@@ -1182,10 +1214,18 @@ void cb20Svce() {
   dtostrf(             pwmdPcnt , 5, 1, mqttVals);
   wrapPubl( (const char * )dutyTops , (const char * )mqttVals, sizeof(mqttVals) ); 
   wrapPubl( (const char * )PwmdTops , (const char * )mqttVals, sizeof(mqttVals) ); 
-  wrapPubl( (const char * )ArspTops , (const char * )artiResp, sizeof(artiResp) ); 
   //
   dtostrf( stepSecs, 8, 3, mqttVals);
   wrapPubl( psecTops, (const char * )(mqttVals), sizeof(mqttVals) );
+  //
+  dtostrf( pidcRn, 8, 3, mqttVals);
+  wrapPubl( (const char * )RnTops , (const char * )mqttVals, sizeof(mqttVals) ); 
+  //
+  dtostrf( pidcYn, 8, 3, mqttVals);
+  wrapPubl( (const char * )YnTops, (const char * )(mqttVals), sizeof(mqttVals) ); 
+  //
+  dtostrf( pidcEn, 8, 3, mqttVals);
+  wrapPubl( (const char * )EnTops, (const char * )(mqttVals), sizeof(mqttVals) ); 
   //
   dtostrf( pidcUn, 8, 3, mqttVals);
   wrapPubl( (const char * )UnTops, (const char * )(mqttVals), sizeof(mqttVals) ); 
@@ -1288,6 +1328,7 @@ void millInit() {
   adc0Curr = adc0Prev = adc0Maxi = adc0Mini = 0;
   pinMode( OFFN_OPIN, OUTPUT);
   pinMode( SCOP_OPIN, OUTPUT);
+  digitalWrite( SCOP_OPIN, 0);
   millMark = micros() + MILL_POLL_USEC;
   adc0Poll = ADC0_POLL_MILL;
   adc0Mark = ADC0_POLL_MILL;
@@ -1341,7 +1382,7 @@ void millLoop() {
     if ( millStep >= adc0Mark ) {
       adc0Mark += adc0Poll;
       adc0Prev = adc0Curr;
-      adc0Curr = analogRead(A0);
+      adc0Curr = analogRead(A0) / 102.4 ;
       adc0Maxi = (adc0Curr > adc0Maxi) ? (adc0Maxi / 2 + adc0Curr / 2) : adc0Maxi;
       adc0Mini = (adc0Curr < adc0Mini) ? (adc0Mini / 2 + adc0Curr / 2) : adc0Mini;
       adc0Avge = adc0Mini / 2  + adc0Maxi / 2 ;
@@ -1721,9 +1762,9 @@ void profLoop() {
         for ( tempIndx = 0; tempIndx < 16; tempIndx++ ) {
           Serial.write(bbrdLin1[tempIndx]);
         }
-        if ((bbrdRctl & RCTL_DIAG) == RCTL_DIAG) {  
-          pidcDbug();
-        }  
+        //if ((bbrdRctl & RCTL_DIAG) == RCTL_DIAG) {  
+          //pidcDbug();
+        //}  
         Serial.println(" ");
         // Rotswitch 
         //Serial.print("Rots: ");
@@ -1734,12 +1775,12 @@ void profLoop() {
         //Serial.print("    ");
         // Front End
       } else {
-        // If new 3 Sec artiResp is flagged send Artisan csv logging serial 
-        if ( bbrdRctl & RCTL_ATTN) {
+        // If bbrd flagged send Artisan csv logging serial 
+        if ( bbrdRctl & RCTL_ATTN ) {
           for ( tempIndx = 0; tempIndx < sizeof(artiResp) - 1; tempIndx++ ) {
             Serial.write(artiResp[tempIndx]);
           }  
-          Serial.println(" ");
+          Serial.write('\n');
           bbrdRctl &= ~RCTL_ATTN;
         }  
       }
@@ -1854,7 +1895,13 @@ void pwmdLoop() {
 /// Rotary 16Way Enc Switch 
 //
 int rotsValu() {
-  int resp, tVal;
+  byte resp, tVal;
+  resp = 0;
+#if PROC_UNO
+  if ( digitalRead(ROTS_BIT3) == LOW  ) resp  = 8; 
+  if ( digitalRead(ROTS_BIT2) == LOW  ) resp += 4; 
+  if ( digitalRead(ROTS_BIT1) == LOW  ) resp += 2; 
+  if ( digitalRead(ROTS_BIT0) == LOW  ) resp += 1; 
   //Serial.print("B3:");
   //Serial.print(digitalRead(ROTS_BIT3));
   //Serial.print(" B2:");
@@ -1862,21 +1909,17 @@ int rotsValu() {
   //Serial.print(" B1:");
   //Serial.print(digitalRead(ROTS_BIT1));
   //Serial.print(" B0:");
-  //Serial.println(digitalRead(ROTS_BIT0));
-  resp = 0;
-#if PROC_UNO
-  if ( digitalRead(ROTS_BIT3) == LOW  ) resp  = 8; 
-  if ( digitalRead(ROTS_BIT2) == LOW  ) resp += 4; 
-  if ( digitalRead(ROTS_BIT1) == LOW  ) resp += 2; 
-  if ( digitalRead(ROTS_BIT0) == LOW  ) resp += 1; 
+  //Serial.print(digitalRead(ROTS_BIT0));
 #endif
 #if WITH_PCF8574
-  tVal = (~(twioRead8() & TWIO_IMSK) ); 
-  resp  = tVal & 0x08;
-  if ( tVal & 0x04) resp += 2;
-  if ( tVal & 0x02) resp += 4;
-  if ( tVal & 0x01) resp += 8;
+  tVal = (~(twioRead8()) & TWIO_IMSK) ; 
+  resp  = tVal & 0x01;
+  if ( tVal & 0x02) resp += 2;
+  if ( tVal & 0x04) resp += 4;
+  if ( tVal & 0x08) resp += 8;
 #endif
+  //Serial.print("TWval:");
+  //Serial.println(tVal);
   return(resp);
 }
     
@@ -2013,50 +2056,24 @@ void virtTcplLoop() {
     } else {
       heatInpu = pwmdOutp;
     }
-#if 0 
-  // Ap10 R20 on popc: virtTcpl showed 236C at real FC 10.7 mins,  260 @ 13.4 mins 
-  // Arti shows Avge 195C at W70 
-    pwmdMavg = int( 0.2 * heatInpu    \
-                 +  0.8 * heatHist[0] \
-                 +  2.0 * heatHist[1] \
-                 +  4.0 * heatHist[2] \
-                 +  2.0 * heatHist[3] ) ; 
-    sensTmpC = sensTmpC + float(pwmdMavg) / 255.0 \
-                 -  (sensTmpC - ambiTmpC) / 32.0;
-//  #endif Ap16 try to get bumpy temp response 
-// Want 195/236 power with slower decay 
-    pwmdMavg = int( 0.1 * heatInpu    \
-                 +  0.2 * heatHist[0] \
-                 +  1.0 * heatHist[1] \
-                 +  1.6 * heatHist[2] \
-                 +  1.2 * heatHist[3] ) ; 
-    sensTmpC = sensTmpC + float(pwmdMavg) / 255.0 \
-                 -  (sensTmpC - ambiTmpC) / 72.0;
-//                 
-    heatHist[3] = heatHist[2] / 4; 
-    heatHist[2] = heatHist[1]; topsTi
-    heatHist[1] = heatHist[0]; 
-    heatHist[0] = heatInpu;
-  }  
-#endif
 // Ap16 0.200 total
-    pwmdMavg = int( 0.00 * heatInpu     \
-                 +  0.00 * heatHist[0]  \
-                 +  0.01 * heatHist[1]  \
-                 +  0.01 * heatHist[2]  \
-                 +  0.01 * heatHist[3]  \
-                 +  0.02 * heatHist[4]  \
-                 +  0.05 * heatHist[5]  \
-                 +  0.10 * heatHist[6]  \
-                 +  0.10 * heatHist[7]  \
+    pwmdMavg = int( 0.01 * heatInpu     \
+                 +  0.02 * heatHist[0]  \
+                 +  0.05 * heatHist[1]  \
+                 +  0.05 * heatHist[2]  \
+                 +  0.10 * heatHist[3]  \
+                 +  0.10 * heatHist[4]  \
+                 +  0.20 * heatHist[5]  \
+                 +  0.20 * heatHist[6]  \
+                 +  0.50 * heatHist[7]  \
                  +  0.20 * heatHist[8]  \
-                 +  0.50 * heatHist[9]  \
-                 +  0.50 * heatHist[10] \
-                 +  0.20 * heatHist[11] \
-                 +  0.20 * heatHist[12] \
-                 +  0.10 * heatHist[13] \
-                 +  0.05 * heatHist[14] \
-                 +  0.02 * heatHist[15] );
+                 +  0.20 * heatHist[9]  \
+                 +  0.20 * heatHist[10] \
+                 +  0.05 * heatHist[11] \
+                 +  0.02 * heatHist[12] \
+                 +  0.01 * heatHist[13] \
+                 +  0.01 * heatHist[14] \
+                 +  0.01 * heatHist[15] );
     sensTmpC = sensTmpC + float(pwmdMavg) / 255.0 \
                  -  (sensTmpC - ambiTmpC) / 100.0;
 //                 
@@ -2194,14 +2211,9 @@ void twioInit() {
   twio.begin();
 }
 
-int twioRead8() {
-  //
-  digitalWrite( SCOP_OPIN, 1);
+byte twioRead8() {
   twioWrite8( 0xFF & TWIO_IMSK );
   twioCurr = twio.read8();
-  //
-  digitalWrite( SCOP_OPIN, 0);
-  //twioWrite8( 0xFF & TWIO_IMSK );  
   //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
   //  Serial.print("twioRead8:");
   //  Serial.println(twioCurr);
@@ -2233,15 +2245,16 @@ void userInit() {
   rampCdpm =  0;
   userScal = centScal;
   baseTmpC = holdTmpC = userDegs = int(ambiTmpC);
-  userCmdl = String("W0");
-  userRctl |= RCTL_ATTN;
+  //userCmdl = String("W0");
+  userDuty = 28;
+  //userRctl |= RCTL_ATTN;
 }
 
 void userLoop() {
   // test for when chars arriving on serial port, set ATTN
   if (Serial.available()) {
     // wait for entire message  .. 115200cps 14 char ~ 1mSec
-    delay(100);
+    delay(10);
     // read all the available characters
     userCmdl = Serial.readStringUntil('\n');
     //Serial.println("loop");
@@ -2252,19 +2265,21 @@ void userLoop() {
 
 void userSvce() {
   // called from loop() if (userRctl & RCTL_ATTN) via MQTT, rotsLoop or Serial
-  if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+  if ( (!( bbrdRctl & RCTL_ARTI )) && ( bbrdRctl & RCTL_DIAG) ) {
     Serial.print ("userSvce usderCmdl : ");
     Serial.println(userCmdl);
   }  
+  // Drop Attn flag immediately so not masked during process
+  userRctl &= ~RCTL_ATTN;
 #if WIFI_MQTT
   // echo back network originated commands 
-  popcMqtt.publish( echoTops, userCmdl, sizeof(userCmdl)); 
+  wrapPubl( echoTops, userCmdl.c_str(), sizeof(userCmdl)); 
 #endif  
   if ( bbrdRctl & RCTL_ARTI ) {
     // Artisan CHAN command 
     if ((userCmdl[0] == 'C') && (userCmdl[1] == 'H') && (userCmdl[2] == 'A')) {
       //  'chan' command, respond '#'
-      Serial.println("#");
+      //Serial.println("# ");
     }  
     if ((userCmdl[0] == 'I') && (userCmdl[1] == 'O') && (userCmdl[2] == '3')) {
       // Cmd : IO3 
@@ -2288,13 +2303,18 @@ void userSvce() {
       userAOT2 = (userCmdl.substring(4)).toInt();
       if (userAOT2 > 99) userAOT2 = 100;
             //
-      dtostrf( userDuty, 8, 3, mqttVals);
+      dtostrf( userAOT2, 8, 3, mqttVals);
       wrapPubl( (const char * )AOT2Tops , (const char * )mqttVals, sizeof(mqttVals) ); 
 
     }
     if ((userCmdl[0] == 'R') && (userCmdl[1] == 'E') && (userCmdl[2] == 'A')) {
-      bbrdArti();
-      Serial.println(artiResp);
+      //
+      //bbrdArti();
+      for ( tempIndx = 0; tempIndx < sizeof(artiResp) - 1; tempIndx++ ) {
+        Serial.write(artiResp[tempIndx]);
+      }  
+      Serial.write('\n');
+      //Serial.println(artiResp);
     }
     //  'unit' command, set user scale 
     if ((userCmdl[0] == 'U') && (userCmdl[1] == 'N') && (userCmdl[5] == 'C')) {
@@ -2542,7 +2562,6 @@ void userSvce() {
       Serial.println(userScal);
     }  
   }
-  userRctl &= ~RCTL_ATTN;
 }
 
 /// Arduino Setup 
@@ -2586,13 +2605,17 @@ void setup() {
     }  
     //  WebSockets
     //Serial.setDebugOutput(true);
-    USE_SERIAL.setDebugOutput(true);
-    USE_SERIAL.println();
-    USE_SERIAL.println();
+    if ( !( bbrdRctl & RCTL_ARTI ) ) {
+      USE_SERIAL.setDebugOutput(true);
+      USE_SERIAL.println();
+      USE_SERIAL.println();
+    }  
     for(uint8_t t = 4; t > 0; t--) {
-        USE_SERIAL.printf("[SETUP] BOOT WAIT %d...\n", t);
-        USE_SERIAL.flush();
-        delay(1000);
+    if ( !( bbrdRctl & RCTL_ARTI ) ) {
+      USE_SERIAL.printf("[SETUP] BOOT WAIT %d...\n", t);
+      USE_SERIAL.flush();
+    }    
+    delay(1000);
     }
     if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
       Serial.println("WMul : add upbd AP  (local IP: ) ");
@@ -2621,9 +2644,9 @@ void setup() {
       if ( (bbrdRctl & RCTL_ARTI) == 0) {
         Serial.print("!");
       }  
-      delay(4000);
-   }
-    if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+      delay(1000);
+    }  
+    if ( !( bbrdRctl & RCTL_ARTI ))  {
       Serial.println("WiFi connected as local IP:");
       Serial.println(WiFi.localIP());
     }  
@@ -2635,19 +2658,18 @@ void setup() {
     popcMqtt.onDisconnected(discCbck);
     popcMqtt.onPublished(publCbck);
     popcMqtt.onData(dataCbck);
-    if ( !( bbrdRctl & RCTL_ARTI) && ( bbrdRctl & RCTL_DIAG) ) {
+    if ( !( bbrdRctl & RCTL_ARTI)) {
       Serial.println("WIFI_MQTT : call popcMgtt.Connect()");
     }  
     popcMqtt.connect();
-    delay(4000);
-    if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-      Serial.println("WIFI_MQTT timeout : wait cbck cted & call popcMqtt.Subs");
+    delay(18000);
+    if ( !( bbrdRctl & RCTL_ARTI ) ) {
+      Serial.println("Wifi Mqtt.connect timed out. calling popcSubs()");
     }  
+    //
     popcSubs();
 #endif
   }  
-
-  //
   //    TickerScheduler(uint size);
   //    boolean add(uint i, uint32_t period, tscallback_t f, boolean shouldFireNow = false);
   //      ts.add(0, 3000, sendData)
@@ -2662,7 +2684,7 @@ void setup() {
   lcdsInit();
 #endif
   if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-    Serial.println("popcEsp init end");
+    Serial.println("popcEsp init() ends");
   } 
 }  
 
@@ -2693,9 +2715,6 @@ void loop() {
   }  
   if (cb90Rctl & RCTL_ATTN) {
     cb90Svce();
-  }  
-  if (userRctl & RCTL_ATTN) {
-    userSvce();
   }  
   if (userRctl & RCTL_ATTN) {
     userSvce();
