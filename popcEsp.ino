@@ -88,7 +88,7 @@
 #define WITH_LCD      0                  // Hdwre has I2C 2x16 LCD display
 #define WITH_MAX31855 0                  // Hdwre has thermocouple + circuit
 #define WITH_PCF8574  1                  // Hdwre has I2C I/O Extender      
-#define WITH_OFFN     0                  // Use ~250cy via mill Off-On SSR, not fast h/w PWM
+#define WITH_OFFN     1                  // Use ~250cy via mill Off-On SSR, not fast h/w PWM
 #define WIFI_MQTT     1                  // Compile for Wifi MQTT client
 #define WIFI_SOKS     0                  // Compile for Wifi Web Sckt Srvr
 #define WIFI_WMAN     0                  // Compile for Wifi Manager
@@ -178,6 +178,8 @@
 #define TWIO_SCL   5     // I2C SCL
 // 
 #define SCOP_OPIN  13    // debug flag uses 'MOSI' line  
+//digitalWrite( SCOP_OPIN, 1);
+//digitalWrite( SCOP_OPIN, 0);
 //digitalWrite( SCOP_OPIN, 0);
 //digitalWrite( SCOP_OPIN, 1);
 //digitalWrite( SCOP_OPIN, 0);
@@ -374,7 +376,10 @@ char centScal   = 'C';
 char fahrScal   = 'F';
 char userScal   = 'C';
 
-String     userCmdl("exactly thirty one chars length");  // Crashable ! 
+//
+String fromSeri;
+String     userCmdl("                               ");  // 39Chrs + null
+//String     userCmdl = "                               ";  // 39Chrs + null
 char   userChrs[] = "023.0,128.8,138.8,000.0,000.0           ";  // 40sp 39 + nullch 
 
 #if IFAC_FRNT
@@ -1014,7 +1019,7 @@ void discCbck() {
       Serial.println("discCbck : popcMqtt.connect pause  4 ..");
     }  
     popcMqtt.connect();
-    delay(16000);
+    delay(2000);
     if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
       Serial.println("Wifi Mqtt.connect timed out. calling popcSubs()");
     }  
@@ -1100,16 +1105,21 @@ void dataCbck(String& topic, String& data) {
   if (topiIndx >= 0){
     // copy data into user command line
     //
-    userCmdl = data;
+    userCmdl = String(data);
     //strncpy(userChrs, data.c_str(), sizeof(userChrs));
-    // //test 
-    userRctl |= RCTL_ATTN; 
-    //if ( 0 ) {
-    if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-      Serial.print("dataCbck-userCmdl - ");
-      Serial.println(userCmdl);
-    }
+    //data.getBytes((byte[])userCmdl, sizeof(userCmdl));
+    //for ( tempIndx = 0; tempIndx < sizeof(userCmdl); tempIndx++ ) {
+    //  userCmdl[tempIndx] = data.charAt(tempIndx) ;
+    //  if (data.charAt(tempIndx) == '\0') {break;}
+    //}  
   }  
+  // //test 
+  userRctl |= RCTL_ATTN; 
+  //if ( 0 ) {
+  if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+    Serial.print("dataCbck-userCmdl - ");
+    Serial.println(userCmdl);
+  }
 }
 
 //
@@ -2253,9 +2263,16 @@ void userLoop() {
   // test for when chars arriving on serial port, set ATTN
   if (Serial.available()) {
     // wait for entire message  .. 115200cps 14 char ~ 1mSec
-    delay(10);
+    delay(400);
     // read all the available characters
+    // Dc14 
     userCmdl = Serial.readStringUntil('\n');
+    //fromSeri = Serial.readStringUntil('\n');
+    //for ( tempIndx = 0; tempIndx < sizeof(userCmdl); tempIndx++ ) {
+    //  userCmdl[tempIndx] = fromSeri.charAt(tempIndx) ;
+    //  if (fromSeri.charAt(tempIndx) == '\0') {break;}
+    //}  
+    //userCmdl[sizeof(userCmdl)] = '\0';
     //Serial.println("loop");
     //Serial.println(userCmdl);
     userRctl |= RCTL_ATTN;
@@ -2275,8 +2292,6 @@ void userSvce() {
   wrapPubl( echoTops, userCmdl.c_str(), sizeof(userCmdl)); 
 #endif  
   if ( bbrdRctl & RCTL_ARTI ) {
-//
-digitalWrite( SCOP_OPIN, 1);
     // Artisan CHAN command 
     if ((userCmdl[0] == 'C') && (userCmdl[1] == 'H') && (userCmdl[2] == 'A')) {
       //  'chan' command, respond '#'
@@ -2312,9 +2327,9 @@ digitalWrite( SCOP_OPIN, 1);
       //
       //bbrdArti();
       for ( tempIndx = 0; tempIndx < sizeof(artiResp) - 1; tempIndx++ ) {
-        Serial.write(artiResp[tempIndx]);
+        Serial.print(artiResp[tempIndx]);
       }  
-      Serial.write('\n');
+      Serial.println("");
       //Serial.println(artiResp);
     }
     //  'unit' command, set user scale 
@@ -2534,7 +2549,7 @@ digitalWrite( SCOP_OPIN, 1);
   }
   if ((userCmdl[0] == 'W') || (userCmdl[0] == 'w')) {
     // set new pwmD Width, run control flag to indicate manual override
-    userDuty = (userCmdl.substring(1)).toInt();
+    userDuty = (userCmdl.substring(1, 5)).toInt();
     if (userDuty > 99) userDuty = 100;
     if ((bbrdRctl & RCTL_DIAG) == RCTL_DIAG) {  
       Serial.print("Manu userDuty: ");
@@ -2563,8 +2578,11 @@ digitalWrite( SCOP_OPIN, 1);
       Serial.println(userScal);
     }  
   }
-//
-digitalWrite( SCOP_OPIN, 0);
+//  clean out cmdLine 
+  for ( tempIndx = 0; tempIndx < sizeof(userCmdl); tempIndx++ ) {
+    userCmdl[tempIndx] = ' ';
+  }  
+  //userCmdl = "";
 }
 
 /// Arduino Setup 
