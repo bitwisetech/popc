@@ -359,6 +359,8 @@ long adc0Curr, adc0Prev, adc0Maxi, adc0Mini, adc0Avge, adc0Bit0;
 
 // Artisan 40+ char serial pkt: ambient, ch1, ch2, ch3, ch4 or Logging Tt Ts BT ET SV Duty
 char artiResp[] = "023.0,128.8,138.8,000.0,000.0          ";  // 39 + null
+// buffer for mqtt Artisan Program interface
+char artiProg[] = "                        ";  // 23 + null
 // Artisan csv header format: these two lines must contain tab chars, not spaces
 const char csvlLin1[] = "Date:	Unit:C	CHARGE:	TP:	DRYe:	FCs:	FCe:	SCs:	SCe:	DROP:	COOL:	Time:";
 const char csvlLin2[] = "Time1	Time2	BT	ET	Event	SV	DUTY";
@@ -673,48 +675,72 @@ void  bbrdArti() {
   // Je15 Artisan Iface : resp 'READ' = Amb,Ch1,2,3,4 Ta,Te,Tb,Te,Du
   if ( userScal == fahrScal) {                                
     dtostrf( floatCtoF(ambiTmpC), 5, 1,  &artiResp[0]  );               // Art's Ta Ch
-    if (floatCtoF(ambiTmpC) < 100)      { artiResp[0]  = '0'; }
-    if (floatCtoF(ambiTmpC) <  10)      { artiResp[1]  = '0'; }
-    if (floatCtoF(ambiTmpC) <   1)      { artiResp[2]  = '0'; }
+    //if (floatCtoF(ambiTmpC) < 100)      { artiResp[0]  = '0'; }
+    //if (floatCtoF(ambiTmpC) <  10)      { artiResp[1]  = '0'; }
+    //if (floatCtoF(ambiTmpC) <   1)      { artiResp[2]  = '0'; }
     dtostrf( floatCtoF(targTmpC), 5, 1,  &artiResp[6]  );               // ET
-    if (floatCtoF(targTmpC) < 100)   { artiResp[6]  = '0'; }
-    if (floatCtoF(targTmpC) <  10)   { artiResp[7]  = '0'; }
-    if (floatCtoF(targTmpC) <   1)   { artiResp[8]  = '0'; }
+    //if (floatCtoF(targTmpC) < 100)   { artiResp[6]  = '0'; }
+    //if (floatCtoF(targTmpC) <  10)   { artiResp[7]  = '0'; }
+    //if (floatCtoF(targTmpC) <   1)   { artiResp[8]  = '0'; }
     dtostrf( floatCtoF(sensTmpC), 5, 1, &artiResp[12] );               // BT
-    if (floatCtoF(sensTmpC) < 100)   { artiResp[12]  = '0'; }
-    if (floatCtoF(sensTmpC) <  10)   { artiResp[13]  = '0'; }
-    if (floatCtoF(sensTmpC) <   1)   { artiResp[14]  = '0'; }
+    //if (floatCtoF(sensTmpC) < 100)   { artiResp[12]  = '0'; }
+    //if (floatCtoF(sensTmpC) <  10)   { artiResp[13]  = '0'; }
+    //if (floatCtoF(sensTmpC) <   1)   { artiResp[14]  = '0'; }
     dtostrf( int(sensCdpm * 9.00 / 5.00 + 50 ), 5, 1, &artiResp[18] ); // SV  
-    if (floatCtoF(sensCdpm) < 100)   { artiResp[18]  = '0'; }
-    if (floatCtoF(sensCdpm) <  10)   { artiResp[19]  = '0'; }
-    if (floatCtoF(sensCdpm) <   1)   { artiResp[20]  = '0'; }
+    //if (floatCtoF(sensCdpm) < 100)   { artiResp[18]  = '0'; }
+    //if (floatCtoF(sensCdpm) <  10)   { artiResp[19]  = '0'; }
+    //if (floatCtoF(sensCdpm) <   1)   { artiResp[20]  = '0'; }
+    dtostrf( floatCtoF(targTmpC), 5, 1,  &artiProg[0]  );               // Art's Ta Ch
+    dtostrf( floatCtoF(sensTmpC), 5, 1,  &artiProg[6]  );               // ET
+    dtostrf( int(sensCdpm * 9.00 / 5.00 + 50 ), 5, 1, &artiProg[12] ); // SV  
   } else {
     dtostrf(           ambiTmpC,  5, 1, &artiResp[0]  );               // AT
-    if (ambiTmpC < 100)   { artiResp[0]  = '0'; }
-    if (ambiTmpC <  10)   { artiResp[1]  = '0'; }
-    if (ambiTmpC <   1)   { artiResp[2]  = '0'; }
+    //if (ambiTmpC < 100)   { artiResp[0]  = '0'; }
+    //if (ambiTmpC <  10)   { artiResp[1]  = '0'; }
+    //if (ambiTmpC <   1)   { artiResp[2]  = '0'; }
     dtostrf(           targTmpC,  5, 1, &artiResp[6]  );               // ET
-    if (targTmpC < 100)   { artiResp[6]  = '0'; }
-    if (targTmpC <  10)   { artiResp[7]  = '0'; }
-    if (targTmpC <   1)   { artiResp[8]  = '0'; }
+    //if (targTmpC < 100)   { artiResp[6]  = '0'; }
+    //if (targTmpC <  10)   { artiResp[7]  = '0'; }
+    //if (targTmpC <   1)   { artiResp[8]  = '0'; }
     dtostrf(           sensTmpC,  5, 1, &artiResp[12] );               // BT
-    if (sensTmpC < 100)   { artiResp[12]  = '0'; }
-    if (sensTmpC <  10)   { artiResp[13]  = '0'; }
-    if (sensTmpC <   1)   { artiResp[14]  = '0'; }
+    //if (sensTmpC < 100)   { artiResp[12]  = '0'; }
+    //if (sensTmpC <  10)   { artiResp[13]  = '0'; }
+    //if (sensTmpC <   1)   { artiResp[14]  = '0'; }
     dtostrf( int(sensCdpm + 50   ), 5, 1, &artiResp[18] );             // SV
-    if (sensCdpm < 100)   { artiResp[18]  = '0'; }
-    if (sensCdpm <  10)   { artiResp[19]  = '0'; }
-    if (sensCdpm <   1)   { artiResp[20]  = '0'; }
+    //if (sensCdpm < 100)   { artiResp[18]  = '0'; }
+    //if (sensCdpm <  10)   { artiResp[19]  = '0'; }
+    //if (sensCdpm <   1)   { artiResp[20]  = '0'; }
+    dtostrf(           targTmpC,  5, 1, &artiProg[0]  );               // ET
+    //if (targTmpC < 100)   { artiProg[0]  = '0'; }
+    //if (targTmpC <  10)   { artiProg[1]  = '0'; }
+    //if (targTmpC <   1)   { artiProg[2]  = '0'; }
+    dtostrf(           sensTmpC,  5, 1, &artiProg[6] );                // BT
+    //if (sensTmpC < 100)   { artiProg[6]  = '0'; }
+    //if (sensTmpC <  10)   { artiProg[7]  = '0'; }
+    //if (sensTmpC <   1)   { artiProg[8]  = '0'; }
+    dtostrf( int(sensCdpm + 50   ), 5, 1, &artiProg[12] );             // SV
+    //if (sensCdpm < 100)   { artiProg[12]  = '0'; }
+    //if (sensCdpm <  10)   { artiProg[13]  = '0'; }
+    //if (sensCdpm <   1)   { artiProg[14]  = '0'; }
   } 
   dtostrf(           pwmdPcnt,  5, 1, &artiResp[24] );                 // DU
-    if (pwmdPcnt < 100)   { artiResp[24]  = '0'; }
-    if (pwmdPcnt <  10)   { artiResp[25]  = '0'; }
-    if (pwmdPcnt <   1)   { artiResp[26]  = '0'; }
+    //if (pwmdPcnt < 100)   { artiResp[24]  = '0'; }
+    //if (pwmdPcnt <  10)   { artiResp[25]  = '0'; }
+    //if (pwmdPcnt <   1)   { artiResp[26]  = '0'; }
+  dtostrf(           pwmdPcnt,  5, 1, &artiProg[18] );                 // DU
+    //if (pwmdPcnt < 100)   { artiProg[18]  = '0'; }
+    //if (pwmdPcnt <  10)   { artiProg[19]  = '0'; }
+    //if (pwmdPcnt <   1)   { artiProg[20]  = '0'; }
   artiResp[5]  = ',';
   artiResp[11] = ',';
   artiResp[17] = ',';
   artiResp[23] = ',';
-  artiResp[39] = '\0';
+  artiResp[30] = '\0';
+  artiProg[5]  = ',';
+  artiProg[11] = ',';
+  artiProg[17] = ',';
+  artiProg[23] = '\0';
+  artiProg[24] = '\n';
 }  
 
 //
@@ -1160,7 +1186,7 @@ void cb10Svce() {
   //
   dtostrf( adc0Curr, 8, 3, mqttVals);
   wrapPubl( (const char * )adc0Tops , (const char * )mqttVals, sizeof(mqttVals) ); 
-  wrapPubl( (const char * )ArspTops , (const char * )artiResp, sizeof(artiResp) ); 
+  wrapPubl( (const char * )ArspTops , (const char * )artiProg, sizeof(artiProg) ); 
   //
   //if ( rCode) {
     //Serial.print("cbck1000 bad      RC: ");
