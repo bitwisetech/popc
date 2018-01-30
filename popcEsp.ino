@@ -82,17 +82,17 @@
 //
 ///
 //  Code compiler switches: 1/0 Enab/Dsel UNO-ESP proc HW, Wifi options - Rebuild, Upload after changing these 
-#define PROC_UNO      0                  // Compile for Arduino Uno
-#define NEWP_UNO      0                  //   Uno new pins polly 
-#define PROC_ESP      1                  // Compile for ESP8266
+#define PROC_UNO      1                  // Compile for Arduino Uno
+#define NEWP_UNO      1                  //   Uno new pins polly 
+#define PROC_ESP      0                  // Compile for ESP8266
 #define WITH_LCD      0                  // Hdwre has I2C 2x16 LCD display
 #define WITH_MAX31855 0                  // Hdwre has thermocouple + circuit
-#define WITH_PCF8574  1                  // Hdwre has I2C I/O Extender      
-#define WITH_OFFN     1                  // Use ~250cy via mill Off-On SSR, not fast h/w PWM
-#define WIFI_MQTT     1                  // Compile for Wifi MQTT client
+#define WITH_PCF8574  0                  // Hdwre has I2C I/O Extender      
+#define WITH_OFFN     0                  // Use ~250cy via mill Off-On SSR, not fast h/w PWM
+#define WIFI_MQTT     0                  // Compile for Wifi MQTT client
 #define WIFI_SOKS     0                  // Compile for Wifi Web Sckt Srvr
 #define WIFI_WMAN     0                  // Compile for Wifi Manager
-#define IFAC_ARTI     1                  // Start with Artisan interface on Serial
+#define IFAC_ARTI     0                  // Start with Artisan interface on Serial
 #define IFAC_FRNT     0                  // Obsolete Front/Process interface on Serial 
 ///
 // UNO pin assignments
@@ -113,7 +113,7 @@
 #define ROTS_BIT2 10                        // Pin Val 4 
 #define ROTS_BIT1 11                        // Pin Val 2 
 #define ROTS_BIT0 12                        // Pin Val 1 
-// spi2 on UNO uno for repl tcpl (excl twio)
+// spi2 on NEWP_ for alternative tcpl interface  (excludes twio)
 #define SPI2_CLCK  3                        // Pin Clock
 #define SPI2_MISO  5                        // ( Pin D4 used TCPL
 #define SPI2_CSEL  2                        // Pin CSel
@@ -178,11 +178,8 @@
 #define TWIO_SCL   5     // I2C SCL
 // 
 #define SCOP_OPIN  13    // debug flag uses 'MOSI' line  
-//digitalWrite( SCOP_OPIN, 1);
-//digitalWrite( SCOP_OPIN, 0);
 //digitalWrite( SCOP_OPIN, 0);
 //digitalWrite( SCOP_OPIN, 1);
-//digitalWrite( SCOP_OPIN, 0);
 //
 #endif   // PROC_ESP
 
@@ -191,28 +188,25 @@
 #if PROC_ESP
 #include <Adafruit_ESP8266.h>
 //
-// wifi Replace with your own network's SSID, Password
+// upward wifi: replace with your own network router's SSID, Password
 //const char* upwdSsid = "myRouterAddx";
 //const char* upwdPwrd = "myRouterPswd";
-//const char* dnwdSsid = "myAPsSSID";
-//const char* dnwdPwrd = "myAPsPswd";
-// wifiManager.autoConnect("upwdSsid", "password");
-//
-const char* upwdSsid = "bitwComw";
-//
-const char* upwdPwrd = "manchester1102190tan";
-//
-//const char* dnwdSsid = "espopc8101";
-//const char* dnwdPwrd = "summerseat";
 //const char* upwdSsid = "cherib";
 //const char* upwdPwrd = "sUmMeRsEaT";
-//
-const char* dnwdSsid = "inactive";
-//
-const char* dnwdPwrd = "pickledcrab1102190";
+//const char* dnwdSsid = "inactive";
+//const char* dnwdPwrd = "pickledcrab1102190";
+//const char* upwdSsid = "bitwComw";
+//const char* upwdPwrd = "manchester1102190tan";
 //const char* upwdSsid = "bitwComc";
 //const char* upwdPwrd = "tWiStEdTeA";
+// downward wifi: for esp8266 access point replace with AP's SSID, Password
+//const char* dnwdSsid = "myAPsSSID";
+//const char* dnwdPwrd = "myAPsPswd";
+//const char* dnwdSsid = "espopc8101";
+//const char* dnwdPwrd = "summerseat";
+//
 // wifiManager.autoConnect("upwdSsid", "password");
+//
 // Beg paste from pubsShed 
 // these incs via popcShed ingo MQTT with tickScheduler 
 // 
@@ -239,7 +233,6 @@ const char* dnwdPwrd = "pickledcrab1102190";
 //
 //MQTT popcMqtt(MQCL_ID, "myPCwithPaho", 1883);
 MQTT popcMqtt(MQCL_ID, "172.20.224.119", 5983);
-
 #endif  // WIFI_MQTT
 
 //Jn01 WifiManager 
@@ -264,10 +257,8 @@ WebSocketsServer webSocket = WebSocketsServer(5981);
 #include <dummy.h>
 #endif  // PROC_ESP
 
-
 /// system settings 
-//  Second poll values Primes to suppress beating 
-
+//  milliSecond poll values Primes to suppress beating 
 #define ADC0_POLL_MILL    2UL            // mS lcd display poll
 #define LCDS_POLL_MSEC 1000UL            // mS lcd display poll
 #define MILL_POLL_USEC 1000UL            // uS 1KHz mill   poll
@@ -487,10 +478,11 @@ float pidcPn, pidcIn, pidcDn       = 0.0; // per sample P-I-D-Err Terms
 float pidcPc, pidcIc, pidcDc       = 0.0; // cumulative P-I-D components 
 float pidcUn = 0.0;                       // PID controller Output
 // 
-const char versChrs[] = "2017SDc05-TWIO";
+const char versChrs[] = "2018Ja09-Pins";
+/// wip: stored profiles
 // profiles
 //   stored as profiles 1-9 with steps 0-9 in each 
-typedef struct profTplt {
+struct profTplt {
   float profTarg;                         // Ramp endpoint or Setpoint if RMin == 0
   float profRMin;                         // Ramp time to TargTemp decimal minutes
   float profHMin;                         // Hold time at TargTemp decimal minutes 
@@ -1409,7 +1401,7 @@ void millLoop() {
       }    
     }  
     // flicker tell tale LED in case of fast PWM
-    if ( (offnRctl & RCTL_AUTO) && (millStep & 32)) {
+    if ( (offnRctl & RCTL_AUTO) && (millStep & 64)) {
       digitalWrite( ONBD_OPIN, (0 | ONBD_LOWON));
     }
     // AD
@@ -1899,7 +1891,9 @@ void pwmdInit() {
 }
 
 void pwmdLoop() {
-  if ( millis() < pwmdMark ) return; else { 
+  if ( millis() < pwmdMark ) { 
+    return;
+  } else { 
     pwmdMark += PWMD_POLL_MSEC;  
     //
     if ( (pwmdRctl & RCTL_RUNS) == 0) {
@@ -1912,10 +1906,9 @@ void pwmdLoop() {
       if ( pwmdRctl & RCTL_MANU) {
         pwmdTarg = byte( 255.0 * userDuty / 100.0 );
         //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-        if (0) {
-          Serial.print("pwmdTarg: ");
-          Serial.println(pwmdTarg);
-        }  
+          //Serial.print("pwmdTarg: ");
+          //Serial.println(pwmdTarg);
+        //}  
       }
       if ( pwmdRctl & RCTL_AUTO) {
         pwmdTarg = byte(pidcUn);
@@ -2076,61 +2069,6 @@ void tcplInit() {
   sensTmpC = ambiTmpC;
 }
 
-void virtTcplLoop() {
-  int pwmdMavg;
-  float heatInpu = 0; 
-  if ( millis() < vtcpMark ) return; else {
-    vtcpMark += VTCP_POLL_MSEC;
-    // virt tcpl 
-    if ( offnRctl & RCTL_AUTO) {
-      if (offnRctl & RCTL_ATTN ) {
-        heatInpu = 255;     
-      } else {
-        heatInpu = 0;
-      }    
-    } else {
-      heatInpu = pwmdOutp;
-    }
-// Ap16 0.200 total
-    pwmdMavg = int( 0.01 * heatInpu     \
-                 +  0.02 * heatHist[0]  \
-                 +  0.05 * heatHist[1]  \
-                 +  0.05 * heatHist[2]  \
-                 +  0.10 * heatHist[3]  \
-                 +  0.10 * heatHist[4]  \
-                 +  0.20 * heatHist[5]  \
-                 +  0.20 * heatHist[6]  \
-                 +  0.50 * heatHist[7]  \
-                 +  0.20 * heatHist[8]  \
-                 +  0.20 * heatHist[9]  \
-                 +  0.20 * heatHist[10] \
-                 +  0.05 * heatHist[11] \
-                 +  0.02 * heatHist[12] \
-                 +  0.01 * heatHist[13] \
-                 +  0.01 * heatHist[14] \
-                 +  0.01 * heatHist[15] );
-    sensTmpC = sensTmpC + float(pwmdMavg) / 255.0 \
-                 -  (sensTmpC - ambiTmpC) / 100.0;
-//                 
-    heatHist[15] = heatHist[14]; 
-    heatHist[14] = heatHist[13]; 
-    heatHist[13] = heatHist[12]; 
-    heatHist[12] = heatHist[11]; 
-    heatHist[11] = heatHist[10]; 
-    heatHist[10] = heatHist[9]; 
-    heatHist[9]  = heatHist[8]; 
-    heatHist[8]  = heatHist[7]; 
-    heatHist[7]  = heatHist[6]; 
-    heatHist[6]  = heatHist[5]; 
-    heatHist[5]  = heatHist[4]; 
-    heatHist[4]  = heatHist[3]; 
-    heatHist[3]  = heatHist[2]; 
-    heatHist[2]  = heatHist[1]; 
-    heatHist[1]  = heatHist[0]; 
-    heatHist[0]  = heatInpu;
-  }
-}
-
 #if WITH_MAX31855
 void tcplRealLoop() {
   double tcplTmpC;
@@ -2240,6 +2178,63 @@ void tcplRealLoop() {
 #endif // WITH_MAX31855
 
 //
+void virtTcplLoop() {
+  int pwmdMavg;
+  float heatInpu = 0; 
+  if ( millis() < vtcpMark ) return; else {
+    vtcpMark += VTCP_POLL_MSEC;
+    // virt tcpl 
+    if ( offnRctl & RCTL_AUTO) {
+      if (offnRctl & RCTL_ATTN ) {
+        heatInpu = 255;     
+      } else {
+        heatInpu = 0;
+      }    
+    } else {
+      heatInpu = pwmdOutp;
+    }
+// Moving average stores heat input over time periods
+    pwmdMavg = int( 0.01 * heatInpu     \
+                 +  0.02 * heatHist[0]  \
+                 +  0.05 * heatHist[1]  \
+                 +  0.05 * heatHist[2]  \
+                 +  0.10 * heatHist[3]  \
+                 +  0.10 * heatHist[4]  \
+                 +  0.20 * heatHist[5]  \
+                 +  0.20 * heatHist[6]  \
+                 +  0.50 * heatHist[7]  \
+                 +  0.20 * heatHist[8]  \
+                 +  0.20 * heatHist[9]  \
+                 +  0.20 * heatHist[10] \
+                 +  0.05 * heatHist[11] \
+                 +  0.02 * heatHist[12] \
+                 +  0.01 * heatHist[13] \
+                 +  0.01 * heatHist[14] \
+                 +  0.01 * heatHist[15] );
+    sensTmpC = sensTmpC + float(pwmdMavg) / 255.0 \
+                 -  (sensTmpC - ambiTmpC) / 100.0;
+//                 
+    heatHist[15] = heatHist[14]; 
+    heatHist[14] = heatHist[13]; 
+    heatHist[13] = heatHist[12]; 
+    heatHist[12] = heatHist[11]; 
+    heatHist[11] = heatHist[10]; 
+    heatHist[10] = heatHist[9]; 
+    heatHist[9]  = heatHist[8]; 
+    heatHist[8]  = heatHist[7]; 
+    heatHist[7]  = heatHist[6]; 
+    heatHist[6]  = heatHist[5]; 
+    heatHist[5]  = heatHist[4]; 
+    heatHist[4]  = heatHist[3]; 
+    heatHist[3]  = heatHist[2]; 
+    heatHist[2]  = heatHist[1]; 
+    heatHist[1]  = heatHist[0]; 
+    heatHist[0]  = heatInpu;
+  }
+}
+
+
+//
 // PCF8574 I2C IO 
 #if WITH_PCF8574
 void twioInit() {
@@ -2289,7 +2284,7 @@ void userLoop() {
   // test for when chars arriving on serial port, set ATTN
   if (Serial.available()) {
     // wait for entire message  .. 115200cps 14 char ~ 1mSec
-    delay(400);
+    delay(100);
     // read all the available characters
     // Dc14 
     userCmdl = Serial.readStringUntil('\n');
@@ -2375,7 +2370,9 @@ void userSvce() {
           targTmpC = userDegs;
         }
         if (targTmpC > maxiTmpC) targTmpC = maxiTmpC;
-        rampCdpm = 0;                                     // Setting target temp implies no ramp 
+        holdTmpC = targTmpC;
+        rampCdpm = userDgpm = 0;          // Setting target temp implies no ramp 
+        stepSecs = 0;                     // User command: reset step timer 
         pwmdRctl &= ~RCTL_MANU;
         pwmdRctl |=  RCTL_AUTO;
       }  
