@@ -64,7 +64,7 @@
 //  y/Y     tbd
 //  z/Z     Zero reset all timecounts
 //
-//  Copyright (c) 2017 Bitwise Technologies  popc@bitwisetech.com  
+//  Copyright (c) 2017, 2018 Bitwise Technologies  popc@bitwisetech.com  
 //
 //  This program is free software; you can redistribute it and/or                  
 //  modify it under the terms of the GNU General Public License as                 
@@ -190,21 +190,15 @@
 #include <Adafruit_ESP8266.h>
 //
 // upward wifi: replace with your own network router's SSID, Password
-//const char* upwdSsid = "myRouterAddx";
-//const char* upwdPwrd = "myRouterPswd";
-//const char* upwdSsid = "cherib";
-//const char* upwdPwrd = "sUmMeRsEaT";
-//const char* dnwdSsid = "inactive";
-//const char* dnwdPwrd = "pickledcrab1102190";
-//const char* upwdSsid = "bitwComw";
-//const char* upwdPwrd = "manchester1102190tan";
-//const char* upwdSsid = "bitwComc";
-//const char* upwdPwrd = "tWiStEdTeA";
+//
+const char* upwdSsid = "myRouterAddx";
+//
+const char* upwdPwrd = "myRouterPswd";
 // downward wifi: for esp8266 access point replace with AP's SSID, Password
-//const char* dnwdSsid = "myAPsSSID";
-//const char* dnwdPwrd = "myAPsPswd";
-//const char* dnwdSsid = "espopc8101";
-//const char* dnwdPwrd = "summerseat";
+//
+const char* dnwdSsid = "myAPsSSID";
+//
+const char* dnwdPwrd = "myAPsPswd";
 //
 // wifiManager.autoConnect("upwdSsid", "password");
 //
@@ -232,8 +226,8 @@
 // MQTT myMqtt(MQCL_ID, "test.mosquitto.org", 1883);
 // MQTT myMqtt(MQCL_ID, "test.mosquitto.org", 1883);
 //
-//MQTT popcMqtt(MQCL_ID, "myPCwithPaho", 1883);
-MQTT popcMqtt(MQCL_ID, "172.20.224.119", 5983);
+//
+MQTT popcMqtt(MQCL_ID, "myPCwithPaho", 1883);
 #endif  // WIFI_MQTT
 
 //Jn01 WifiManager 
@@ -283,8 +277,8 @@ WebSocketsServer webSocket = WebSocketsServer(5981);
 #define MILL_POLL_USEC 4000UL            // uS 240Hz mill  poll
 #define POLL_SLOP_MSEC    5UL            // Avge loop time is 10mSec
 #endif 
-//
 
+//
 // BOF preprocessor bug prevent - insert me on top of your arduino-code
 // From: http://www.a-control.de/arduino-fehler/?lang=en
 #if 1
@@ -479,7 +473,7 @@ float pidcPn, pidcIn, pidcDn       = 0.0; // per sample P-I-D-Err Terms
 float pidcPc, pidcIc, pidcDc       = 0.0; // cumulative P-I-D components 
 float pidcUn = 0.0;                       // PID controller Output
 // 
-const char versChrs[] = "2018Ja09-Priv-Dbug Arti";
+const char versChrs[] = "2018Fe02-Publ-Arti-Ifac";
 /// wip: stored profiles
 // profiles
 //   stored as profiles 1-9 with steps 0-9 in each 
