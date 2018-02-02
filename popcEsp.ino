@@ -92,7 +92,7 @@
 #define WIFI_MQTT     0                  // Compile for Wifi MQTT client
 #define WIFI_SOKS     0                  // Compile for Wifi Web Sckt Srvr
 #define WIFI_WMAN     0                  // Compile for Wifi Manager
-#define IFAC_ARTI     0                  // Start with Artisan interface on Serial
+#define IFAC_ARTI     1                  // Start with Artisan interface on Serial
 #define IFAC_FRNT     0                  // Obsolete Front/Process interface on Serial 
 ///
 // UNO pin assignments
@@ -127,6 +127,9 @@
 #define TWIO_SCL   3     // I2C SCL
 //
 #define SCOP_OPIN  2     // debug flag nixes SPI2_CSEL
+// macros to toggle scope output pin specified above for logic analyser
+#define scopHi digitalWrite( SCOP_OPIN, 1)
+#define scopLo digitalWrite( SCOP_OPIN, 0)
 ///
 #else    // NOT NEWP_UNO
 //
@@ -178,8 +181,6 @@
 #define TWIO_SCL   5     // I2C SCL
 // 
 #define SCOP_OPIN  13    // debug flag uses 'MOSI' line  
-//digitalWrite( SCOP_OPIN, 0);
-//digitalWrite( SCOP_OPIN, 1);
 //
 #endif   // PROC_ESP
 
@@ -478,7 +479,7 @@ float pidcPn, pidcIn, pidcDn       = 0.0; // per sample P-I-D-Err Terms
 float pidcPc, pidcIc, pidcDc       = 0.0; // cumulative P-I-D components 
 float pidcUn = 0.0;                       // PID controller Output
 // 
-const char versChrs[] = "2018Ja09-Pins";
+const char versChrs[] = "2018Ja09-Priv-Dbug Arti";
 /// wip: stored profiles
 // profiles
 //   stored as profiles 1-9 with steps 0-9 in each 
@@ -1355,7 +1356,7 @@ void millInit() {
   adc0Curr = adc0Prev = adc0Maxi = adc0Mini = 0;
   pinMode( OFFN_OPIN, OUTPUT);
   pinMode( SCOP_OPIN, OUTPUT);
-  digitalWrite( SCOP_OPIN, 0);
+  scopLo;
   millMark = micros() + MILL_POLL_USEC;
   adc0Poll = ADC0_POLL_MILL;
   adc0Mark = ADC0_POLL_MILL;
@@ -1781,6 +1782,7 @@ void profLoop() {
     //
     if (( bbrdRctl & RCTL_ARTI ) == 0) {
       if ( bbrdRctl & RCTL_INFO ) {
+//
         // Send billboard 'Info' on serial 
         for ( tempIndx = 0; tempIndx < 16; tempIndx++ ) {
           Serial.write(bbrdLin0[tempIndx]);
@@ -2195,21 +2197,21 @@ void virtTcplLoop() {
     }
 // Moving average stores heat input over time periods
     pwmdMavg = int( 0.01 * heatInpu     \
-                 +  0.02 * heatHist[0]  \
-                 +  0.05 * heatHist[1]  \
-                 +  0.05 * heatHist[2]  \
+                 +  0.04 * heatHist[0]  \
+                 +  0.08 * heatHist[1]  \
+                 +  0.10 * heatHist[2]  \
                  +  0.10 * heatHist[3]  \
                  +  0.10 * heatHist[4]  \
-                 +  0.20 * heatHist[5]  \
-                 +  0.20 * heatHist[6]  \
-                 +  0.50 * heatHist[7]  \
-                 +  0.20 * heatHist[8]  \
-                 +  0.20 * heatHist[9]  \
-                 +  0.20 * heatHist[10] \
-                 +  0.05 * heatHist[11] \
-                 +  0.02 * heatHist[12] \
-                 +  0.01 * heatHist[13] \
-                 +  0.01 * heatHist[14] \
+                 +  0.10 * heatHist[5]  \
+                 +  0.14 * heatHist[6]  \
+                 +  0.18 * heatHist[7]  \
+                 +  0.22 * heatHist[8]  \
+                 +  0.22 * heatHist[9]  \
+                 +  0.22 * heatHist[10] \
+                 +  0.16 * heatHist[11] \
+                 +  0.12 * heatHist[12] \
+                 +  0.08 * heatHist[13] \
+                 +  0.02 * heatHist[14] \
                  +  0.01 * heatHist[15] );
     sensTmpC = sensTmpC + float(pwmdMavg) / 255.0 \
                  -  (sensTmpC - ambiTmpC) / 100.0;
@@ -2770,5 +2772,6 @@ void loop() {
 #endif  
 #endif  
   //frntLoop();
-  // Why delay(10);
+  // Why 
+  delay(10);
 }
