@@ -194,19 +194,9 @@
 // upward wifi: replace with your own network router's SSID, Password
 //const char* upwdSsid = "myRouterAddx";
 //const char* upwdPwrd = "myRouterPswd";
-//const char* upwdSsid = "cherib";
-//const char* upwdPwrd = "sUmMeRsEaT";
-//const char* dnwdSsid = "inactive";
-//const char* dnwdPwrd = "pickledcrab1102190";
-//const char* upwdSsid = "bitwComw";
-//const char* upwdPwrd = "manchester1102190tan";
-//const char* upwdSsid = "bitwComc";
-//const char* upwdPwrd = "tWiStEdTeA";
 // downward wifi: for esp8266 access point replace with AP's SSID, Password
 //const char* dnwdSsid = "myAPsSSID";
 //const char* dnwdPwrd = "myAPsPswd";
-//const char* dnwdSsid = "espopc8101";
-//const char* dnwdPwrd = "summerseat";
 //
 // wifiManager.autoConnect("upwdSsid", "password");
 //
@@ -231,11 +221,10 @@
 #define MQCL_ID "popc"
 //  Mqtt
 // create MQTT object with IP address, port of MQTT broker e.g.mosquitto application
-// MQTT myMqtt(MQCL_ID, "test.mosquitto.org", 1883);
-// MQTT myMqtt(MQCL_ID, "test.mosquitto.org", 1883);
+// MQTT 
+myMqtt(MQCL_ID, "test.mosquitto.org", 1883);
 //
-//MQTT popcMqtt(MQCL_ID, "myPCwithPaho", 1883);
-MQTT popcMqtt(MQCL_ID, "172.20.224.119", 5983);
+// MQTT popcMqtt(MQCL_ID, "myPCwithPaho", 1883);
 #endif  // WIFI_MQTT
 
 //Jn01 WifiManager 
