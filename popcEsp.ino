@@ -13,20 +13,12 @@
 //  prof  Profile control; selects auto/manual temp setpt, manual pwm width, real/fake temp sensor
 //  rots  Rotary 16way encoded ( 4pin + common) selector switch manager
 //  tcpl  MAX31855 SPI thermocouple temperature sensor or virtual temp readings for debug
-//  twio  PCD8574 I2C 8b IO for (esp) rotary sw via 4bit in + 4b i/o eg indl, SSR on/off drives
+//  twio  PCD8574 I2C 8b IO extender for rotary sw ( on ESP) via 4bit in + 4b i/o eg indl, SSR on/off drives
 //  user  receive user's or Artisan commands via serial port, MQTT for setpoint, ramp, profiles 
 //    
-//  Arduino H/W details:  
-//
-//  nano: Ser:0,1  ExtInt:2 PWM:9,10(490HzTmr1) 3,11(490HzTmr2) PWM:5,6 (980HzTmr0 + mS, delay)
-//        SPI:10,11,12,13 I2C SDA:A4 SCL:A5 LED:13
-//
-//  pins:  lcdi: A4 A5; 
-//      tcplSPI:        D3 D5    D10
-//          pwm:              D9      
-// 
 //  Command - Response supported for Artisan interface:
-//  CHA       #    Acknowlege command, no action
+//                 ** 'CHA' cmd causes auto-switch into Artisan speak            
+//  CHA       #    Acknowlege command, no action **
 //  IO3 nn         Set duty cycle to nn <= 100    
 //  OT1 nn         Set duty cycle to nn <= 100    
 //  OT2 nn         Set duty cycle to nn <= 100    
@@ -34,12 +26,12 @@
 //  UNC            Set units to Centigrade 
 //  UNF            Set units to Fahrenheit
 //  PID SV nnn     Set new target setpoint temp to nnn
-// 
+//                 ** 'CHA' cmd causes auto-switch into AArtisan speak            
 // 
 //  Command & LCD Indicators; Upcase: User Set; LowCase: Auto/Sensed/Readback value 
 //  a/A     Set serial interface to Artisan talk
 //  Bff     Set PID Beta parameter (Float; Expert only ! )  
-//  CHAN    (Auto from Artisan) Set Artisan talk  
+//  CHAN    (Auto from Artisan) Set Artisan speak
 //  c/C     Set centigrade units; LCD display actual/target temp
 //  d/D     toggle diagnostic verbose messages on serial 
 //  e/E     Readback / Update EEPROM PID parameters 
@@ -51,10 +43,10 @@
 //  Kff     Set PID Gain TComp  (Float Kappa: 0 == no Temp comp)
 //  l/L     Send Artisan CSV format on serial ( for capture and Artisan Import )  
 //  m/M     Rsvd MQTT msg  
-//  NORM    Break eerial out of Artisan talk
+//  NORM    Break serial out of Artisan speak
 //  n/N     Rsvd NetSock + 
-//  o       
-//  Pff     Readback / Set PID P-Term gain (Float Kp: lower value == lower  gain)
+//  o       Off~/On PID run 
+//  p/Pff   Readback / Set PID P-Term gain (Float Kp: lower value == lower  gain)
 //  q/Q     Query Readback PIDC operating (not eeprom) parameters / Q tbd
 //  rnn/Rnn Set Temperature Ramp C/F Deg per min (Set before hold temp) 
 //  snn/Snn Set immediate target setPoint C/F temperature  
@@ -82,10 +74,28 @@
 //  along with this program; if not, write to the Free Software                    
 // .Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA 
 //
-///
+/// Hardware pin assignments
+//
+//  nano: Ser:0,1  ExtInt:2 PWM:9,10(490HzTmr1) 3,11(490HzTmr2) PWM:5,6 (980HzTmr0 + mS, delay)
+//        SPI:10,11,12,13 I2C SDA:A4 SCL:A5 LED:13
+//
+// 
+/// Compiling this sketch
+//    for UNO
+//      Set '1' compile-time switches, below:  PROC_UNO, NEWP_UNO ( set unused switches to '0')
+//    for ESP8266   
+//      Setup your Arduino IDE for ESP8266, see www.adafruit.com and install board support package
+//      Get the ESP TickerScheduler package, copy TickerScheduler.* into the same folder as this sketch, not into library folder.
+//      Set '1' compile-time switches, below:  PROC_ESP           ( set unused switches to '0')
+//    for either processor 
+//      Set '1' compile-time switches, below:  WITH_LCD, WITH_MAX31855, WITH_PCF8574 if you have that hardware
+//      Your sketchbook/library must contain libraries:  LiquidCrystal, Adafruit_MAX31855_library (for UNO), MAX31855 (for ESP), PCF8574 as needed
+//      For ESP: Adafruit_ESP8266 plus libraries for wifi as selected: esp-mqtt-arduino, WiFiManager, WebSockets  ( not all wifi options tested ! ) 
+//               Copy from /.arduino15/packages/esp8266/hardware/esp8266/2.3.0/libraries/Ticker/Ticker.h
+//
 //  Code compiler switches: 1/0 Enab/Dsel UNO-ESP proc HW, Wifi options - Rebuild, Upload after changing these 
 #define PROC_UNO      1                  // Compile for Arduino Uno
-#define NEWP_UNO      1                  //   Uno new pins polly 
+#define NEWP_UNO      1                  // Uno new pins layout
 #define PROC_ESP      0                  // Compile for ESP8266
 #define WITH_LCD      1                  // Hdwre has I2C 2x16 LCD display
 #define WITH_MAX31855 1                  // Hdwre has thermocouple + circuit
@@ -430,33 +440,20 @@ const char KappaTops[] = "/popc/pidc/Kappa";
 //pidc
 //Ap15
 // Fast response PID to match approx 30Hz PWM frequency 
-//  Date  Kp      Ti      Td      Beta      Gamma 
-// Jn04   2.400   8.000   0.025   1.000     1.000  Jn04-Migs-Furn BBSF     
-// Jn04++ Kp applies only to Pn no more to Ti, Td 
-//           comp: Rdce Ti, Incr Td by Kp       
-//        2.400   3.333   0.060                    Jn04++ Theor sett
-// 17Jn10 1.75 4.50 0.448 1.0 1.0 post Kt-Kp adj Kick up when ramp lowered
-// 17Jn10 2.00 5.00 0.320 1.0 1.0 tune: was slow on 20-10-5                
-// 17Jn14 2.25 4.25 0.250 1.0 1.0 Je14 Ethi need more Kp
-// 17Jn17 2.50 4.00 0.100 1.0 1.0 Je17 Good ESP Virt                 
-// 17Jn17 2.00 3.00 0.100 1.0 1.0 Je17 Migs-Furn slow osc          
-// 17Jn17 2.40 3.33 0.060 1.0 1.0 Je17 attempt Jn04 clone          
-// 17Je22 2.50 3.00 0.005 1.0 1.0 Je22
-// 17Au04 4.00 2.00 0.005 1.0 1.0 Je22
-// 17Au31 2.00 2.00 1.000 2.0 1.0 0.25 Kappa comp 
-// 17Se02 2.00 2.00 0.250 2.0 1.0 0.25 Overshoots S80->s180 Reduce Td  
-// 17Se02 2.50 2.50 0.250 2.0 1.0 0.20 Less area at OShoot? Inc Kp, Ti, Ka
-// 17Se15 2.50 4.00 0.250 2.0 1.0 0.20 Attempt
+//  Date  Kp      Ti      Td     Beta  Gamma  Ka
+//  Mr18  2.5    4.0      0.05    2.0   1.0  0.25  Popc ?
+//  Mr18  8.0    0.4      2.00    2.0   1.0  0.25  Nesc
 //
-float pidcKp    =   2.500;                // P-Term gain
-float pidcKc    =   2.500;                // P-Term gain
-float pidcTi    =   4.000;                // I-Term Gain sec ( Ti++ = Gain--)
-float pidcTd    =   0.250;                // D-Term Gain sec ( Td++ = Gain++)
+//
+float pidcKp    =   3.000;                // P-Term gain
+float pidcKc    =   3.000;                // P-Term gain
+float pidcTi    =   2.000;                // I-Term Gain sec ( Ti++ = Gain--)
+float pidcTd    =   8.000;                // D-Term Gain sec ( Td++ = Gain++)
 //
 float pidcBeta    =   2.000;              // P-term Refr vs YInp
 float pidcGamma   =   1.000;              // D-term Refr vs YInp
 float pidcAlpha   =   0.100;              // D-term Filter time
-float pidcKappa   =   0.200;              // Ambient comp Kp * ( 1 + Ka (sens - idle)/idle )
+float pidcKappa   =   0.250;              // Ambient comp Kp * ( 1 + Ka (sens - idle)/idle )
 //
 float pidcRn      =  ambiTmpC;            // Refr setpoint
 float pidcYn      =  ambiTmpC;            // YInp input
@@ -470,7 +467,7 @@ float pidcPn, pidcIn, pidcDn       = 0.0; // per sample P-I-D-Err Terms
 float pidcPc, pidcIc, pidcDc       = 0.0; // cumulative P-I-D components 
 float pidcUn = 0.0;                       // PID controller Output
 // 
-const char versChrs[] = "2018Mar04-autoArti";
+const char versChrs[] = "2018Mar18-pidcRctl";
 /// wip: stored profiles
 // profiles
 //   stored as profiles 1-9 with steps 0-9 in each 
@@ -761,12 +758,24 @@ void bbrdFill() {
   } else {
     dtostrf(           sensTmpC,  3, 0, &bbrdLin0[12] );
   } 
-  if ( pwmdRctl & RCTL_MANU) {
-    bbrdLin0[0] = 'W';
+  // Show 'a/M' auto/non for pid with 0-255 output
+  if ((stepSecs != 0) && ( totlSecs % 2 ) &&  (pidcRctl & RCTL_RUNS)) {
+    if (pidcRctl & RCTL_AUTO) {
+      bbrdLin0[0] = 'U';
+    } else {  
+      bbrdLin0[0] = 'm';
+    }  
+    dtostrf( pidcUn,                              3, 0, &bbrdLin0[1]);
+    bbrdLin0[4]   = ' ';
+    
   } else {
-    bbrdLin0[0] = 'w';
+    if ( pwmdRctl & RCTL_MANU) {
+      bbrdLin0[0] = 'W';
+    } else {
+      bbrdLin0[0] = 'w';
+    }  
+    bbrdLin0[4]   = '%';
   }  
-  bbrdLin0[4]   = '%';
   bbrdLin0[5]  = ' ';
   // Odd secs: show desred ROC; Even secs: show measured ROC 
   if (( stepSecs != 0 ) && ( totlSecs % 2 )){
@@ -1560,13 +1569,13 @@ void pidcLoop() {
       if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
         Serial.println(F("pidc stop"));
       }  
-      Un = 0;
+      Un = pidcUn = pidcRn = pidcYn = 0.00;
     } else {
       // 
       Ts = (PIDC_POLL_MSEC / 1000.0); // sample interval (Sec)
       // 
-      pidcRn = (float)targTmpC;
-      pidcYn = (float)sensTmpC;
+      if (!isnan(targTmpC)) pidcRn = (float)targTmpC;
+      if (!isnan(sensTmpC)) pidcYn = (float)sensTmpC;
       // P term 
       pidcEn  = pidcRn - pidcYn;
       Epn = pidcBeta * pidcRn - pidcYn;
@@ -1619,7 +1628,7 @@ void pidcLoop() {
           }  
         }  
       }
-      Un = Un1 + dUn;
+      if (!isnan(dUn)) Un = Un1 + dUn;
       pidcUn = Un;
       // Updates indexed values;
       Un1   = Un;
@@ -2128,6 +2137,8 @@ void tcplRealLoop() {
       // Error  condition ESP:tResp <> 0   UNO: isNan Temperature  
 #if PROC_UNO
       if (isnan(tcplTmpC)) {
+        // Bad reading: use avges 
+        sensTmpC = float( prevTmpC / 2.00 + degCHist[0] / 4.00 + degCHist[1] / 4.00 ); 
         tResp = tcpl.readError();
       }
 #endif       
@@ -2138,8 +2149,7 @@ void tcplRealLoop() {
         lcd.print(F("thermoCouple : "));
         lcd.setCursor ( 0, 1 );
 #endif
-       if ( 0 ) {
-          // block tcpl diags if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+        if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
           Serial.print(" Sense: ");
         }  
         switch ( tResp ) {
@@ -2188,12 +2198,14 @@ void tcplRealLoop() {
         delay (500);
         lcd.clear();
 #endif
+        // Bad reading: use avges 
+        sensTmpC = float( prevTmpC / 2.00 + degCHist[0] / 4.00 + degCHist[1] / 4.00 ); 
       } else {
-        // Only update sensed temp with a valid reading 
-        //sensTmpC = float( tcplTmpC); 
+        // update sensed temp with valid reading 
+        sensTmpC = float( tcplTmpC); 
       }  
       // get temp even if error 
-      sensTmpC = float( tcplTmpC); 
+      //sensTmpC = float( tcplTmpC); 
     }  
   }  
 }  
@@ -2355,9 +2367,13 @@ void userSvce() {
         holdTmpC = targTmpC;
         rampCdpm = userDgpm = 0;          // Setting target temp implies no ramp 
         stepSecs = 0;                     // User command: reset step timer 
+        pidcRctl |=  RCTL_AUTO;
         pwmdRctl &= ~RCTL_MANU;
         pwmdRctl |=  RCTL_AUTO;
       }  
+      if ((userCmdl[3] == ',') && (userCmdl[4] == 'T')) {
+        // PID,T,P,I,D cmd new PID gains 
+      }
     }
     if ((userCmdl[0] == 'R') && (userCmdl[1] == 'E') && (userCmdl[2] == 'A')) {
       //
@@ -2504,12 +2520,16 @@ void userSvce() {
     }  
     stepSecs = 0;
   }
+  // o/O  off~on PID 
+  if (((userCmdl[0] == 'o') || (userCmdl[0] == 'O')) && (userCmdl[1] != 'T')) {
+    pidcRctl ^= RCTL_RUNS;
+  }
   // P  put pid Kp term 
   if (((userCmdl[0] == 'p') || (userCmdl[0] == 'P')) && (userCmdl[1] != 'I')) {
     pidcKp = (userCmdl.substring(1)).toFloat();
     pidcInfo();
   }
-  // o Readback PID operating parameters
+  // q query readback PID operating parameters
   if (userCmdl[0] == 'q') {
     pidcInfo();
   }  
@@ -2533,6 +2553,7 @@ void userSvce() {
       stepSecs = 0;
     }
     // seting ramp unsets manual PWM width 
+    pidcRctl |=  RCTL_AUTO;
     pwmdRctl &= ~RCTL_MANU;
     pwmdRctl |=  RCTL_AUTO;
     if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
@@ -2551,6 +2572,7 @@ void userSvce() {
     if (targTmpC > maxiTmpC) targTmpC = maxiTmpC;
     rampCdpm = userDgpm = 0;          // Setting target temp implies no ramp 
     stepSecs = 0;                     // User command: reset step timer 
+    pidcRctl |=  RCTL_AUTO;
     pwmdRctl &= ~RCTL_MANU;
     pwmdRctl |=  RCTL_AUTO;
   }
@@ -2588,6 +2610,7 @@ void userSvce() {
       stepSecs = 0;                   // User command: reset step timer 
     }
     bbrdTmde = bbrdManu;
+    pidcRctl &= ~RCTL_AUTO;
     pwmdRctl &= ~RCTL_AUTO;
     pwmdRctl |=  RCTL_MANU;
     // manual pwm will apply in pwmd loop; unset manual ramp ctrl 
