@@ -18,7 +18,7 @@
 //    
 //  Command - Response supported for Artisan interface:
 //                 ** 'CHA' cmd causes auto-switch into Artisan speak            
-//  CHA       #    Acknowlege command, no action **
+//  CHAN      #    Acknowlege command, no action **
 //  IO3 nn         Set duty cycle to nn <= 100    
 //  OT1 nn         Set duty cycle to nn <= 100    
 //  OT2 nn         Set duty cycle to nn <= 100    
@@ -54,8 +54,8 @@
 //  u/U     Set PWM Frequency Hz (TBD)  
 //  v/V     Readback firmware version, PID, EEPROM parms to serial 
 //  wnn/Wnn Set PWM Duty Cycle nn <= 100, disable PID
-//  x/X     tbd rddbk  / wRite  x axis parms
-//  y/Y     tbd
+//  x/X     Rdbk/Write PID XVal: Steady temp with   0% pwm 
+//  y/Y     Rdbk/Write PID YVal: Steady temp with 100% pwm 
 //  z/Z     Zero reset all timecounts
 //
 //  Copyright (c) 2017 2018 Bitwise Technologies  popc@bitwisetech.com  
@@ -94,18 +94,19 @@
 //               Copy from /.arduino15/packages/esp8266/hardware/esp8266/2.3.0/libraries/Ticker/Ticker.h
 //
 //  Code compiler switches: 1/0 Enab/Dsel UNO-ESP proc HW, Wifi options - Rebuild, Upload after changing these 
-#define PROC_UNO      1                  // Compile for Arduino Uno
-#define NEWP_UNO      1                  // Uno new pins layout
-#define PROC_ESP      0                  // Compile for ESP8266
-#define WITH_LCD      1                  // Hdwre has I2C 2x16 LCD display
-#define WITH_MAX31855 1                  // Hdwre has thermocouple + circuit
-#define WITH_PCF8574  0                  // Hdwre has I2C I/O Extender      
+#define PROC_UNO      0                  // Compile for Arduino Uno
+#define NEWP_UNO      0                  // Uno new pins layout
+#define PROC_ESP      1                  // Compile for ESP8266
+#define WITH_LCD      0                  // Hdwre has I2C 2x16 LCD display
+#define WITH_MAX31855 0                  // Hdwre has thermocouple + circuit
+#define WITH_PCF8574  1                  // Hdwre has I2C I/O Extender      
 #define WITH_OFFN     0                  // Use ~250cy via mill Off-On SSR, not fast h/w PWM
 #define WIFI_MQTT     0                  // Compile for Wifi MQTT clientF
+#define WITH_WIFI     0                  // Compile for Wifi MQTT clientF
 #define WIFI_SOKS     0                  // Compile for Wifi Web Sckt Srvr
 #define WIFI_WMAN     0                  // Compile for Wifi Manager
-#define IFAC_ARTI     0                  // Start with Artisan interface on Serial
-#define IFAC_FRNT     0                  // Obsolete Front/Process interface on Serial 
+#define IFAC_ARTI     1                  // Start with Artisan interface on Serial
+#define IFAC_FRNT     0                  // ObsofLETMP Front/Process interface on Serial 
 ///
 // UNO pin assignments
 #if PROC_UNO
@@ -139,9 +140,6 @@
 #define TWIO_SCL   3     // I2C SCL
 //
 #define SCOP_OPIN  2     // debug flag nixes SPI2_CSEL
-// macros to toggle scope output pin specified above for logic analyser
-#define scopHi digitalWrite( SCOP_OPIN, 1)
-#define scopLo digitalWrite( SCOP_OPIN, 0)
 ///
 #else    // NOT NEWP_UNO
 //
@@ -195,18 +193,21 @@
 #define SCOP_OPIN  13    // debug flag uses 'MOSI' line  
 //
 #endif   // PROC_ESP
+// macros to toggle scope output pin specified above for logic analyser
+#define scopHi digitalWrite( SCOP_OPIN, 1)
+#define scopLo digitalWrite( SCOP_OPIN, 0)
 
 ///
 //   WiFi preamble for ESP with Wifi Router ID, PW Info 
-#if PROC_ESP
+#if ( PROC_ESP && WITH_WIFI) 
 #include <Adafruit_ESP8266.h>
 //
 // upward wifi: replace with your own network router's SSID, Password
-//const char* upwdSsid = "myRouterAddx";
-//const char* upwdPwrd = "myRouterPswd";
+const char* upwdSsid = "myRouterAddx";
+const char* upwdPswd = "myRouterPswd";
 // downward wifi: for esp8266 access point replace with AP's SSID, Password
 //const char* dnwdSsid = "myAPsSSID";
-//const char* dnwdPwrd = "myAPsPswd";
+//const char* dnwdPswd = "myAPsPswd";
 //
 // wifiManager.autoConnect("upwdSsid", "password");
 //
@@ -257,7 +258,7 @@ WebSocketsServer webSocket = WebSocketsServer(5981);
 //
 // from another copy ??
 #include <dummy.h>
-#endif  // PROC_ESP
+#endif  // ( PROC_ESP && WITH_WIFI)
 
 /// system settings 
 //  milliSecond poll values Primes to suppress beating 
@@ -299,7 +300,7 @@ __asm volatile ("nop");
 #include <SPI.h>
 #include <Wire.h>  // Comes with Arduino IDE
 
-// lcd                                     
+// LCD: I2C 2x16                                      
 // Pin A4 Pin A5 i2c
 // set LCD address to 0x27 for a A0-A1-A2  display
 //   args: (addr, en,rw,rs,d4,d5,d6,d7,bl,blpol)
@@ -310,7 +311,7 @@ LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  // Set the LCD I
 #endif 
 #endif 
 
-// 
+//  MAX31855 thermocouple 
 #if WITH_MAX31855
 #if PROC_UNO
 #include "Adafruit_MAX31855.h"
@@ -322,7 +323,7 @@ MAX31855 tcpl(TCPL_CLCK, TCPL_CSEL, TCPL_MISO);
 #endif  //  ESP
 #endif  //  MAX31855
 
-// TWIO pcf8574
+// PCF8574 I2C I/O extender 
 #if WITH_PCF8574
 #define TWIO_IMSK  0x0F  // PCF port 3-0 pin  7-4 are inputs 
 #define TWIO_OMSK  0xF0  // PCF port 7-4 pin 12-9 are outputs 
@@ -399,6 +400,8 @@ int eprmSize, eprmFree;
 #define EADX_BE (eprmSize - 4 * (sizeof(float)))
 #define EADX_GA (eprmSize - 5 * (sizeof(float)))
 #define EADX_KA (eprmSize - 6 * (sizeof(float)))
+#define EADX_XB (eprmSize - 7 * (sizeof(float)))
+#define EADX_YB (eprmSize - 8 * (sizeof(float)))
 
 // i-n-g-o MQTT 
 // mqtt strings are declared for both ESP8266 and UNO 
@@ -454,10 +457,13 @@ float pidcBeta    =   2.000;              // P-term Refr vs YInp
 float pidcGamma   =   1.000;              // D-term Refr vs YInp
 float pidcAlpha   =   0.100;              // D-term Filter time
 float pidcKappa   =   0.250;              // Ambient comp Kp * ( 1 + Ka (sens - idle)/idle )
+float pidcXBias   =   0.000;              // Steady temp with   0% pwm
+float pidcYBias   =   0.000;              // Steady temp with 100% pwm ( 0 : do no bias term )
 //
 float pidcRn      =  ambiTmpC;            // Refr setpoint
 float pidcYn      =  ambiTmpC;            // YInp input
-float pidcEn      =   0.000;              // YInp input
+float pidcEn      =   0.000;              // Beta * Refr - Inpu
+float pidcBn      =   0.000;              // If pidCYterm > 0  Constant setpoint refr bias
 float pidcUMax    = 255.000;              // Outp Max
 float pidcUMin    =   0.000;              // Outp Min
 float dUn, Edn, Epn, Epn1          = 0.0; // Calc error values
@@ -538,7 +544,10 @@ byte  rampRctl  = 0x00;
 byte  holdRctl  = 0x00;
 byte  tcplRctl  = RCTL_RUNS;
 byte  userRctl  = RCTL_RUNS;
+byte  wifiRctl  = 0x00;
+#if WITH_WIFI
 byte  wifiRctl  = RCTL_RUNS;
+#endif
 
 // scheduler tick callback attn flags 
 byte  cb10Rctl  = RCTL_RUNS;
@@ -559,7 +568,7 @@ unsigned long profMark, pwmdMark, rotsMark, tcplMark, vtcpMark = 0UL;
 //unsigned long vtcpMark, millMark, millStep = 0UL;
 //
 
-#if PROC_ESP
+#if ( PROC_ESP && WITH_WIFI)
 #include "TickerScheduler.h"
 TickerScheduler popcShed(3);
 //
@@ -615,7 +624,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t lenght
 #endif //WIFI_SOKS
 //
 #else 
-#endif  // PROC_ESP
+#endif  // ( PROC_ESP && WITH_WIFI)
 
 //
 float         targTmpC, sensTmpC, prevTmpC;   // target, sensor, previous temperature deg C
@@ -884,7 +893,7 @@ void eprmInit() {
 #else  
   eprmSize = EEPROM.length();
 #endif  
-  eprmFree = eprmSize - ( 6 * sizeof(float));  // Reserve floats: Kappa Gamma Beta Td Ti Kp 
+  eprmFree = eprmSize - ( 8 * sizeof(float));  // Reserve floats: Kappa Gamma Beta Td Ti Kp XB YB
 }
 
 void eprmInfo() {
@@ -909,6 +918,12 @@ void eprmInfo() {
     Serial.print(fromEprm);
     EEPROM.get(EADX_KA, fromEprm);
     Serial.print(F(" Ka:"));
+    Serial.print(fromEprm);
+    EEPROM.get(EADX_XB, fromEprm);
+    Serial.print(F(" Xb:"));
+    Serial.print(fromEprm);
+    EEPROM.get(EADX_YB, fromEprm);
+    Serial.print(F(" Yb:"));
     Serial.println(fromEprm);
 }
 
@@ -1480,7 +1495,7 @@ void pidcFprm() {
   EEPROM.get( EADX_KP, fromEprm);
   if ( pidcKp != fromEprm) {
     if ( !( bbrdRctl & RCTL_ARTI ) ) {
-      Serial.print(F("EEPROM new Kp:"));
+      Serial.print(F("New Kp from EEPROM:"));
       Serial.println(fromEprm);
     }
     pidcKp = fromEprm; 
@@ -1489,7 +1504,7 @@ void pidcFprm() {
   EEPROM.get( EADX_TI, fromEprm);
   if ( pidcTi != fromEprm) {
     if ( !( bbrdRctl & RCTL_ARTI ) ) {
-      Serial.print(F("EEPROM new Ti:"));
+      Serial.print(F("New TiKp from EEPROM:"));
       Serial.println(fromEprm);
     }
     pidcTi =  fromEprm; 
@@ -1498,7 +1513,7 @@ void pidcFprm() {
   EEPROM.get( EADX_TD, fromEprm);
   if ( pidcTd != fromEprm) {
     if ( !( bbrdRctl & RCTL_ARTI ) ) {
-      Serial.print(F("EEPROM new Td:"));
+      Serial.print(F("New Kp from EEPROM:"));
       Serial.println(fromEprm);
     }
     pidcTd = fromEprm; 
@@ -1507,28 +1522,37 @@ void pidcFprm() {
   EEPROM.get( EADX_BE, fromEprm);
   if ( pidcBeta != fromEprm) {
     if ( !( bbrdRctl & RCTL_ARTI ) ) {
-      Serial.print(F("EEPROM new Be:"));
+      Serial.print(F("New Kp from EEPROM:"));
       Serial.println(fromEprm);
     }
     pidcBeta = fromEprm; 
   }  
   //
-  EEPROM.get( EADX_GA, fromEprm);
-  if ( pidcGamma != fromEprm) {
-    if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-      Serial.print(F("EEPROM new Ga:"));
-      Serial.println(fromEprm);
-    }
-    pidcGamma = fromEprm; 
-  }  
-  //
   EEPROM.get( EADX_KA, fromEprm);
   if ( pidcKappa != fromEprm) {
     if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-      Serial.print(F("EEPROM new Ka:"));
+      Serial.print(F(" New Ka from EEPROM:"));
       Serial.println(fromEprm);
     }
     pidcKappa = fromEprm; 
+  }  
+  //
+  EEPROM.get( EADX_XB, fromEprm);
+  if ( pidcXBias != fromEprm) {
+    if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+      Serial.print(F("New Xb from EEPROM"));
+      Serial.println(fromEprm);
+    }
+    pidcXBias = fromEprm; 
+  }  
+  //
+  EEPROM.get( EADX_YB, fromEprm);
+  if ( pidcYBias != fromEprm) {
+    if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+      Serial.print(F("New Yb from EEPROM"));
+      Serial.println(fromEprm);
+    }
+    pidcYBias = fromEprm; 
   }  
 }
 void pidcInit() {
@@ -1537,7 +1561,9 @@ void pidcInit() {
   Epn1 = 0.0;
   Edfn2 = Edfn1 = Edfn = 0;
   // get 
+#if PROC_UNO
   pidcFprm();
+#endif  
   // first time being enabled, seed with current property tree value
   Un1 = Un = 0;
   pidcMark =  millis() + PIDC_POLL_MSEC;
@@ -1557,7 +1583,11 @@ void pidcInfo() {
   Serial.print(F(" Ga:"));
   Serial.print(pidcGamma);
   Serial.print(F(" Ka:"));
-  Serial.println(pidcKappa);
+  Serial.print(pidcKappa);
+  Serial.print(F(" Xb:"));
+  Serial.print(pidcXBias);
+  Serial.print(F(" Yb:"));
+  Serial.println(pidcYBias);
 }  
 //
 void pidcLoop() {
@@ -1579,6 +1609,12 @@ void pidcLoop() {
       // P term 
       pidcEn  = pidcRn - pidcYn;
       Epn = pidcBeta * pidcRn - pidcYn;
+      // B term 
+      if ( pidcYBias == 0) {
+        pidcBn = 0;
+      } else {
+        pidcBn = 100 * ( pidcRn - pidcXBias ) / ( pidcYBias - pidcXBias ); 
+      }  
       // D term 
       if ( pidcTd <= 0 ) {
         Edfn2 = Edfn1 = Edfn = 0;
@@ -1611,6 +1647,7 @@ void pidcLoop() {
         pidcDn = 0;
       } 
       pidcDc += pidcDn; 
+      //dUn    = pidcPn + pidcIn + pidcDn;
       dUn    = pidcPn + pidcIn + pidcDn;
       // Integrator anti-windup logic:
       if ( dUn > (pidcUMax - Un1) ) {
@@ -1628,7 +1665,14 @@ void pidcLoop() {
           }  
         }  
       }
-      if (!isnan(dUn)) Un = Un1 + dUn;
+      // Update output if increment is valid number 
+      if (!isnan(dUn)) {
+        Un = Un1 + dUn;
+        if ( pidcYBias > 0 ) {
+          // tbd figure how to add bias to increment 
+          Un = Un1 + dUn;
+        }  
+      }  
       pidcUn = Un;
       // Updates indexed values;
       Un1   = Un;
@@ -1906,7 +1950,6 @@ void pwmdSetF( double newFreq) {
     pwmdExpo( 0); 
     pwmdFreq = 31372;
   } 
-  
 #endif 
 }
 
@@ -1915,6 +1958,7 @@ void pwmdInit() {
   pwmdDuty = 0;
   pinMode( PWMD_OPIN, PWMD_MODE);
 #if PROC_ESP
+  #define PWMRANGE 255
   analogWriteRange(255);
 #endif  
   pwmdSetF( PWMD_FREQ);			
@@ -2280,8 +2324,7 @@ void userInit() {
   rampCdpm =  0;
   userScal = centScal;
   baseTmpC = holdTmpC = userDegs = int(ambiTmpC);
-  //userCmdl = String("W0");
-  userDuty = 28;
+  userDuty = 8;
   //userRctl |= RCTL_ATTN;
 }
 
@@ -2331,10 +2374,10 @@ void userSvce() {
       dtostrf( userDuty, 8, 3, mqttVals);
       wrapPubl( (const char * )AIO3Tops , (const char * )mqttVals, sizeof(mqttVals) ); 
     }
-    if ((userCmdl[0] == 'N') && (userCmdl[1] == 'O') && (userCmdl[2] == 'R') && (userCmdl[2] == 'M')) {
+    if ((userCmdl[0] == 'N') && (userCmdl[1] == 'O') && (userCmdl[2] == 'R') && (userCmdl[3] == 'M')) {
       // Cmd : Escape autoArti 
-        bbrdRctl &= ~RCTL_ARTI; 
-        Serial.println("# Serial  <=> Console");
+      bbrdRctl &= ~RCTL_ARTI; 
+      Serial.println("# Serial  <=> Console");
     }
     if ((userCmdl[0] == '0') && (userCmdl[1] == 'T') && (userCmdl[2] == '1')) {
       // Cmd : IO3 
@@ -2411,7 +2454,8 @@ void userSvce() {
   // Artisan CHAN command For reset flip to Artisan mode   
   if ((userCmdl[0] == 'C') && (userCmdl[1] == 'H') && (userCmdl[2] == 'A') && (userCmdl[3] == 'N')) {
     bbrdRctl |=  RCTL_ARTI;
-    //  'chan' command, respond '#'    Serial.println("#");
+    //  'chan' command, respond '#'    
+    Serial.println("#");
   }  
   //  c/C set Centigrade units 
   if (((userCmdl[0] == 'C') || (userCmdl[0] == 'c')) && (userCmdl[1] != 'H')) {
@@ -2457,6 +2501,17 @@ void userSvce() {
     if ( pidcKappa != fromEprm ) {
       EEPROM.put( EADX_KA, pidcKappa);
     }
+    EEPROM.get(EADX_XB, fromEprm);
+    if ( pidcXBias != fromEprm ) {
+      EEPROM.put( EADX_XB, pidcXBias);
+    }
+    EEPROM.get(EADX_YB, fromEprm);
+    if ( pidcYBias != fromEprm ) {
+      EEPROM.put( EADX_YB, pidcYBias);
+    }
+#if PROC_ESP
+    EEPROM.commit();
+#endif    
     eprmInfo();  
   }
   // f/F Set fahrenheit units 
@@ -2603,6 +2658,8 @@ void userSvce() {
       Serial.print("Manu userDuty: ");
       Serial.println(userDuty);
     }  
+    Serial.print("# manu pwm: ");
+    Serial.println(userDuty);
     if ( userDuty == 0) {
       // Power off: Sense ambient ( fan htr pwr), temp setpt to meas ambient
       targTmpC = ambiTmpC;
@@ -2616,6 +2673,20 @@ void userSvce() {
     // manual pwm will apply in pwmd loop; unset manual ramp ctrl 
     rampCdpm = 0;
   }
+  // X  put pid Xb term 
+  if ((userCmdl[0] == 'x') || (userCmdl[0] == 'X')) {
+    pidcXBias = (userCmdl.substring(1)).toFloat();
+    pidcInfo();
+  }
+  // Y  put pid Yb term 
+  if ((userCmdl[0] == 'Y') || (userCmdl[0] == 'Y')) {
+    pidcYBias = (userCmdl.substring(1)).toFloat();
+    pidcInfo();
+  }
+  // q query readback PID operating parameters
+  if (userCmdl[0] == 'q') {
+    pidcInfo();
+  }  
   if ((userCmdl[0] == 'Z') || (userCmdl[0] == 'z')) {
     // Zero 'Total Time' 
     totlSecs = 0;
@@ -2652,6 +2723,7 @@ void setup() {
   twioInit();
 #endif
 #if PROC_ESP
+#if WITH_WIFI
   if (wifiRctl & RCTL_RUNS) {
     if ( (bbrdRctl & RCTL_ARTI) == 0) {
       Serial.println();
@@ -2667,8 +2739,8 @@ void setup() {
     if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
       Serial.println("WIFI_WMAN : init call popcMqtt.autoConnect");
     }  
-    wifiManager.autoConnect(dnwdSsid, dnwdPwrd);
-#endif
+    wifiManager.autoConnect(dnwdSsid, dnwdPswd);
+#endif // WIFI_WMAN
 #if WIFI_SOKS
     if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
       Serial.print(F("WIFI_SOKS WebS Init"));
@@ -2692,7 +2764,7 @@ void setup() {
       Serial.println(WiFi.localIP());
     }  
     //WiFiMulti.addAP("SSID", "passpasspass");
-    WiFiMulti.addAP(upwdSsid, upwdPwrd);
+    WiFiMulti.addAP(upwdSsid, upwdPswd);
     //
     while(WiFiMulti.run() != WL_CONNECTED) {
       if ( (bbrdRctl & RCTL_ARTI) == 0) {
@@ -2709,7 +2781,7 @@ void setup() {
     webSocket.onEvent(webSocketEvent);
 #else
     //  Wifi Setup 
-    WiFi.begin(upwdSsid, upwdPwrd);
+    WiFi.begin(upwdSsid, upwdPswd);
     while (WiFi.status() != WL_CONNECTED) {
       if ( (bbrdRctl & RCTL_ARTI) == 0) {
         Serial.print("!");
@@ -2720,7 +2792,7 @@ void setup() {
       Serial.println("WiFi connected as local IP:");
       Serial.println(WiFi.localIP());
     }  
-#endif
+#endif // WIFI_SOKS
 #if WIFI_MQTT
     //  MQTT Setup 
     //    setup callbacks
@@ -2738,7 +2810,7 @@ void setup() {
     }  
     //
     popcSubs();
-#endif
+#endif // WIFI_MQTT
   }  
   //    TickerScheduler(uint size);
   //    boolean add(uint i, uint32_t period, tscallback_t f, boolean shouldFireNow = false);
@@ -2747,6 +2819,7 @@ void setup() {
   shedRcod = popcShed.add( 0, 1000, cbck1000);
   shedRcod = popcShed.add( 1, 2000, cbck2000);
   shedRcod = popcShed.add( 2, 9000, cbck9000);
+#endif // WITH_WIFI
 #else 
 #endif // PROC_ESP
 //
@@ -2789,12 +2862,12 @@ void loop() {
   if (userRctl & RCTL_ATTN) {
     userSvce();
   }  
-#if PROC_ESP
+#if (PROC_ESP && WITH_WIFI)
   popcShed.update();
 #if WIFI_SOKS
   webSocket.loop(); 
-#endif  
-#endif  
+#endif  // WIFI_SOKS
+#endif  // PROC_ESP && WITH_WIFI
   //frntLoop();
   // Why 
   delay(10);
