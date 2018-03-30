@@ -2597,7 +2597,7 @@ void userSvce() {
     // Gets unstable with v low masses 
     if (tempIntB < 10 ) tempIntB = 10;
     // Beans added at ambient, reduce wkng temp towards ambient
-    if (tempIntB > vTmpDegC) {
+    if (tempIntB > vChgGrms) {
       vTmpDegC = float(ambiTmpC) + vChgGrms / ( vChgGrms + tempIntB ) * ( vTmpDegC - float(ambiTmpC));
     }
     vChgGrms = tempIntB;
