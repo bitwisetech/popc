@@ -941,10 +941,10 @@ void frntRecv() {
       Direct_Reverse = Serial.read();
     } else {
       frntComm.asBytes[index-2] = Serial.read();
-      //Serial.print("\nIndx:");
+      //Serial.print(F(# "\nIndx:"));
       //Serial.g(index);
       //Serial.print(frntComm.asBytes[index]);
-      //Serial.print("    ");
+      //Serial.print(F("    "));
     }  
     index++;
   } 
@@ -991,7 +991,7 @@ void frntSend() {
   Serial.print(F(" "));
   Serial.print(pidcTd);   
   Serial.print(F(" "));
-  //if(myPID.GetMode()==AUTOMATIC) Serial.print("Auto");
+  //if(myPID.GetMode()==AUTOMATIC) Serial.print(F("Auto"));
   if(Auto_Man==1) Serial.print(F("Auto"));
   else Serial.print(F("Manu"));  
   Serial.print(F(" "));
@@ -1051,23 +1051,23 @@ void lcdsLoop() {
 //
 void connCbck() {
   if ( !( bbrdRctl & RCTL_ARTI ) ) {
-    Serial.println("connCbck : connected to MQTT server");
+    Serial.println(F("# connCbck : connected to MQTT server"));
   }
 }
 
 void discCbck() {
   if ( !( bbrdRctl & RCTL_ARTI ) ) {
-    Serial.println("discCbck disc from mqtt, pause ..");
+    Serial.println(F("# discCbck disc from mqtt, pause .."));
     delay(1000);
   }  
   #if WIFI_MQTT 
   if ( !( bbrdRctl & RCTL_ARTI ) ) {
-      Serial.println("discCbck : popcMqtt.connect pause  4 ..");
+      Serial.println(F("# discCbck : popcMqtt.connect pause  4 .."));
     }  
     popcMqtt.connect();
     delay(2000);
     if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-      Serial.println("# Wifi Mqtt.connect timed out. calling popcSubs()");
+      Serial.println(F("# Wifi Mqtt.connect timed out. calling popcSubs()"));
     }  
     //Je18     
     popcSubs();
@@ -1077,7 +1077,7 @@ void discCbck() {
 void publCbck() {
   //if ( 0 ) {
   //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-  //  Serial.println("# popc publCbck");
+  //  Serial.println(F("# popc publCbck"));
   //}  
 }
 
@@ -1086,9 +1086,9 @@ void dataCbck(String& topic, String& data) {
   float topiValu;
   if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
   //if ( 0 ) {
-    Serial.print("# dataCbck topic:");
+    Serial.print(F("# dataCbck topic:"));
     Serial.print(topic);
-    Serial.print("   data:");
+    Serial.print(F("   data:"));
     Serial.println(data);
   }  
   topiIndx = topic.indexOf("pidc/Kp");
@@ -1097,7 +1097,7 @@ void dataCbck(String& topic, String& data) {
     if ( topiValu != pidcKp) {
       pidcKp = topiValu;
       if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-        Serial.print("# dataCbck-new Kp: ");
+        Serial.print(F("# dataCbck-new Kp: "));
         Serial.println(topiValu);
       }  
     }  
@@ -1108,7 +1108,7 @@ void dataCbck(String& topic, String& data) {
     if ( topiValu != pidcTd) {
       pidcTd = topiValu;
       if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-        Serial.print("# dataCbck-new Td: ");
+        Serial.print(F("# dataCbck-new Td: "));
         Serial.println(topiValu);
       }  
     }  
@@ -1119,7 +1119,7 @@ void dataCbck(String& topic, String& data) {
     if ( topiValu != pidcTi) {
       pidcTi = topiValu;
       if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-        Serial.print("# dataCbck-new Ti: ");
+        Serial.print(F("# dataCbck-new Ti: "));
         Serial.println(topiValu);
       }  
     }  
@@ -1130,7 +1130,7 @@ void dataCbck(String& topic, String& data) {
     if ( topiValu != pidcBeta) {
       pidcBeta = topiValu;
       if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-        Serial.print("# dataCbck-new Beta: ");
+        Serial.print(F("# dataCbck-new Beta: "));
         Serial.println(topiValu);
       }  
     }  
@@ -1141,7 +1141,7 @@ void dataCbck(String& topic, String& data) {
     if ( topiValu != pidcGamma) {
       pidcGamma = topiValu;
       if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-        Serial.print("# dataCbck-new Gamma: ");
+        Serial.print(F("# dataCbck-new Gamma: "));
         Serial.println(topiValu);
       }  
     }  
@@ -1163,7 +1163,7 @@ void dataCbck(String& topic, String& data) {
   userRctl |= RCTL_ATTN; 
   //if ( 0 ) {
   if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-    Serial.print("# dataCbck-userCmdl - ");
+    Serial.print(F("# dataCbck-userCmdl - "));
     Serial.println(userCmdl);
   }
 }
@@ -1179,11 +1179,11 @@ void wrapPubl( const char * tTops , const char * tVals, int tInt ) {
 #endif
 #endif
   //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-    //Serial.print  ("wrapPubl popcMqtt.publish topic : ");
+    //Serial.print  (F("# wrapPubl popcMqtt.publish topic : "));
     //Serial.println(tTops);
-    //Serial.print  (" tVals : ");
+    //Serial.print  (F(" tVals : "));
     //Serial.print  (tVals);
-    //Serial.print  (" RC : ");
+    //Serial.print  (F(" RC : "));
     //Serial.println(rCode);
   //}
   //delay(100);
@@ -1192,7 +1192,7 @@ void wrapPubl( const char * tTops , const char * tVals, int tInt ) {
 //pupSub / ESP ticker callbacks and service 
 void cbck1000() {
   //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-  //  Serial.println("# cbck1000 sets cb10Rctl ATTN");
+  //  Serial.println(F("# cbck1000 sets cb10Rctl ATTN"));
   //}  
   cb10Rctl |= RCTL_ATTN;
 }
@@ -1209,7 +1209,7 @@ void cb10Svce() {
   wrapPubl( (const char * )ArspTops , (const char * )artiProg, sizeof(artiProg) ); 
   //
   //if ( rCode) {
-    //Serial.print("# cbck1000 bad      RC: ");
+    //Serial.print(F("# cbck1000 bad      RC: "));
     //Serial.println(rCode);
   //}
   //
@@ -1219,7 +1219,7 @@ void cb10Svce() {
 void cbck2000() {
   if ( 0 ) {
   //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-    Serial.println("# cbck200 sets cb10Rctl ATTN");
+    Serial.println(F("# cbck200 sets cb10Rctl ATTN"));
   }  
   //
   cb20Rctl |= RCTL_ATTN;
@@ -1227,7 +1227,7 @@ void cbck2000() {
 
 void cb20Svce() {
   //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-    //Serial.println("# cb20Svce");
+    //Serial.println(F("# cb20Svce"));
   int rCode = 0;
   // Artisan interface                      'Read' Cmd; Send Ambient:Targ:Sens:Prof:Duty
   if ( userScal == fahrScal) {
@@ -1291,14 +1291,14 @@ void cb20Svce() {
 void cbck9000() {
   if ( 0 ) {
   // if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-    Serial.println("# cbck9000 sets cb90Rctl ATTN");
+    Serial.println(F("# cbck9000 sets cb90Rctl ATTN"));
   }  
   cb90Rctl |= RCTL_ATTN;
 }
 
 void cb90Svce() {
 	//if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-  	//Serial.println("cb90Svce");
+  	//Serial.println(F("cb90Svce"));
   int rCode = 0;
   dtostrf( pidcElap, 12, 3, mqttVals);
   wrapPubl( c900Tops, (const char *)(mqttVals), sizeof(mqttVals) ); 
@@ -1329,11 +1329,11 @@ void cb90Svce() {
   wrapPubl( (const char * )ptmpTops, (const char *)(mqttVals), sizeof(mqttVals) ); 
   //
   //if ( rCode) {
-    //Serial.print("# cb90Svce bad cuml RC: ");
+    //Serial.print(F("# cb90Svce bad cuml RC: "));
     //Serial.println(rCode);
   //}
   //if ( rCode) {
-    //Serial.print("# cbck9000 bad cuml RC: ");
+    //Serial.print(F("# cbck9000 bad cuml RC: "));
     //Serial.println(rCode);
   //}
   cb90Rctl &= ~RCTL_ATTN;
@@ -1349,9 +1349,9 @@ void wrapSubs( const char * tTops ) {
 #endif
 #endif
   if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-    Serial.print  ("# wrapSubs popcMqtt.subscribe topic : ");
-    Serial.println(tTops);
-    Serial.print  (" RC : ");
+    Serial.print(F("# wrapSubs popcMqtt.subscribe topic : "));
+    Serial.print(tTops);
+    Serial.print(F(" RC : "));
     Serial.println(rCode);
   }
   //delay(100);
@@ -1401,10 +1401,10 @@ void millLoop() {
     // max mill rate 5uSec per on-off
     if ( !(millStep % 1000) )  {
       if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-        Serial.print  ("# adc0:");  Serial.print  (adc0Curr);
-        Serial.print  (" Maxi:"); Serial.print  (adc0Maxi);
-        Serial.print  (" Mini:"); Serial.print  (adc0Mini);
-        Serial.print  (" Avge:"); Serial.println(adc0Avge);
+        Serial.print(F("# adc0:"));  Serial.print  (adc0Curr);
+        Serial.print(F(" Maxi:")); Serial.print  (adc0Maxi);
+        Serial.print(F(" Mini:")); Serial.print  (adc0Mini);
+        Serial.print(F(" Avge:")); Serial.println(adc0Avge);
       }
     }  
     if ( ( pwmdPcnt * 8 )  > ( millStep % 833 ) ) {
@@ -1825,11 +1825,11 @@ void profLoop() {
       degCHist[0] = int(sensTmpC);
       prevTmpC    = sensTmpC;
       //  if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-        //Serial.print("# Curr:");
+        //Serial.print(F("# Curr:"));
         //Serial.print(sensTmpC);
-        //Serial.print(" Prev:");
+        //Serial.print(F(" Prev:"));
         //Serial.print(prevTmpC);
-        //Serial.print(" Cdpm:");
+        //Serial.print(F(" Cdpm:"));
         //Serial.println(sensCdpm);
       //  }  
     }  
@@ -1850,14 +1850,14 @@ void profLoop() {
         //if ((bbrdRctl & RCTL_DIAG) == RCTL_DIAG) {  
           //pidcDbug();
         //}  
-        Serial.println(" ");
+        Serial.println(F(" "));
         // Rotswitch 
-        //Serial.print("# Rots: ");
+        //Serial.print(F("# Rots: "));
         //Serial.print(rotsValu());
-        //Serial.print("    ");
-        //Serial.print("tcplRctl: ");
+        //Serial.print(F("    ");
+        //Serial.print(F("tcplRctl: "));
         //Serial.print(tcplRctl);
-        //Serial.print("    ");
+        //Serial.print(F("    "));
         // Front End
       } else {
         // If bbrd flagged send Artisan csv logging serial 
@@ -1973,7 +1973,7 @@ void pwmdLoop() {
     //
     if ( (pwmdRctl & RCTL_RUNS) == 0) {
       if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-        Serial.print("# pwmdRctl==0");
+        Serial.print(F("# pwmdRctl==0"));
       }  
       pwmdOutp = 0;
     } else {
@@ -1981,7 +1981,7 @@ void pwmdLoop() {
       if ( pwmdRctl & RCTL_MANU) {
         pwmdTarg = byte( 255.0 * userDuty / 100.0 );
         //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-          //Serial.print("# pwmdTarg: ");
+          //Serial.print(F("# pwmdTarg: "));
           //Serial.println(pwmdTarg);
         //}  
       }
@@ -2005,13 +2005,13 @@ int rotsValu() {
   if ( digitalRead(ROTS_BIT2) == LOW  ) resp += 4; 
   if ( digitalRead(ROTS_BIT1) == LOW  ) resp += 2; 
   if ( digitalRead(ROTS_BIT0) == LOW  ) resp += 1; 
-  //Serial.print("B3:");
+  //Serial.print(F("# B3:"));
   //Serial.print(digitalRead(ROTS_BIT3));
-  //Serial.print(" B2:");
+  //Serial.print(F(" B2:"));
   //Serial.print(digitalRead(ROTS_BIT2));
-  //Serial.print(" B1:");
+  //Serial.print(F(" B1:"));
   //Serial.print(digitalRead(ROTS_BIT1));
-  //Serial.print(" B0:");
+  //Serial.print(F(" B0:"));
   //Serial.print(digitalRead(ROTS_BIT0));
 #endif
 #if WITH_PCF8574
@@ -2021,7 +2021,7 @@ int rotsValu() {
   if ( tVal & 0x04) resp += 4;
   if ( tVal & 0x08) resp += 8;
 #endif
-  //Serial.print("TWval:");
+  //Serial.print(F("# TWval:"));
   //Serial.println(tVal);
   return(resp);
 }
@@ -2051,7 +2051,7 @@ void rotsLoop() {
         // steady value changed from previous
         rotsCurr = rotsNewb;
         if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-          Serial.print("# Rots:");
+          Serial.print(F("# Rots:"));
           Serial.print(rotsCurr);
         }  
         // manage rotary switch settings
@@ -2136,7 +2136,7 @@ void tcplInit() {
 #if PROC_ESP
   tcpl.setTCfactor(K_TC);
   tcpl.begin();
-  Serial.println("tcpl.begin");
+  //Serial.println(F("# tcpl.begin"));
 #endif
 #endif
   tcplMark = millis() + TCPL_POLL_MSEC;
@@ -2263,7 +2263,7 @@ float virtTcplLoop() {
   int   vMSecSmpl;
   vMSecSmpl = millis() - vPrvMSec;
   if ( vMSecSmpl < 100 ) {
-    //Serial.println("vNyet");	
+    //Serial.println(F("vNyet"));
 	return ( int(vTmpDegC));
   } else {
     vPrvMSec  = millis();  
