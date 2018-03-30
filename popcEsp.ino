@@ -632,8 +632,8 @@ int           userDuty, userDgpm, sensCdpm;   // userSet duty cycle; userSet C/F
 int           userAOT1, userAOT2, userAIO3;   // Arti OT1Dty, Arti OT2Dty, Arti IO3Dty 
 int           baseTmpC, rampCdpm, holdTmpC;   // Ramp start temp, hold at  endpoint 
 int           stepSecs, holdTogo, totlSecs;   // Step elapsed, hold countdown, total run time
-int           userDegs, tempIndx, tempIndy;   // User C/F temp,  temporary array indexers
-float         userArgf;                       // Float arg extracted from userCmdl
+int           userDegs, tempIntA, tempIntB;   // User C/F temp, temporary array indexers, scratch vbls
+float         tempFltA;                       // Float arg extracted from userCmdl
 /// Common 
 //    Convert
 float floatCtoF( float celsInp) {
@@ -1154,9 +1154,9 @@ void dataCbck(String& topic, String& data) {
     userCmdl = String(data);
     //strncpy(userChrs, data.c_str(), sizeof(userChrs));
     //data.getBytes((byte[])userCmdl, sizeof(userCmdl));
-    //for ( tempIndx = 0; tempIndx < sizeof(userCmdl); tempIndx++ ) {
-    //  userCmdl[tempIndx] = data.charAt(tempIndx) ;
-    //  if (data.charAt(tempIndx) == '\0') {break;}
+    //for ( tempIntA = 0; tempIntA < sizeof(userCmdl); tempIntA++ ) {
+    //  userCmdl[tempIntA] = data.charAt(tempIntA) ;
+    //  if (data.charAt(tempIntA) == '\0') {break;}
     //}  
   }  
   // //test 
@@ -1727,9 +1727,9 @@ void pidcDbug() {
   dbugLine[85]  = ' ';
   #endif
   //
-  for ( tempIndx = 0; tempIndx < 64; tempIndx++ ) {
+  for ( tempIntA = 0; tempIntA < 64; tempIntA++ ) {
     if (( bbrdRctl & RCTL_ARTI ) == 0) {
-      Serial.write(dbugLine[tempIndx]);
+      Serial.write(dbugLine[tempIntA]);
     }  
   } 
 }
@@ -1840,12 +1840,12 @@ void profLoop() {
       if ( bbrdRctl & RCTL_INFO ) {
 //
         // Send billboard 'Info' on serial 
-        for ( tempIndx = 0; tempIndx < 16; tempIndx++ ) {
-          Serial.write(bbrdLin0[tempIndx]);
+        for ( tempIntA = 0; tempIntA < 16; tempIntA++ ) {
+          Serial.write(bbrdLin0[tempIntA]);
         }  
         Serial.write(" <=> ");
-        for ( tempIndx = 0; tempIndx < 16; tempIndx++ ) {
-          Serial.write(bbrdLin1[tempIndx]);
+        for ( tempIntA = 0; tempIntA < 16; tempIntA++ ) {
+          Serial.write(bbrdLin1[tempIntA]);
         }
         //if ((bbrdRctl & RCTL_DIAG) == RCTL_DIAG) {  
           //pidcDbug();
@@ -1862,8 +1862,8 @@ void profLoop() {
       } else {
         // If bbrd flagged send Artisan csv logging serial 
         if ( bbrdRctl & RCTL_ATTN ) {
-          for ( tempIndx = 0; tempIndx < sizeof(artiResp) - 1; tempIndx++ ) {
-            Serial.write(artiResp[tempIndx]);
+          for ( tempIntA = 0; tempIntA < sizeof(artiResp) - 1; tempIntA++ ) {
+            Serial.write(artiResp[tempIntA]);
           }  
           Serial.write('\r');
           Serial.write('\n');
@@ -2274,8 +2274,8 @@ float virtTcplLoop() {
     // TC4 return(int(vTmpDegF));
     sensTmpC = vTmpDegC;
   }
-  //
-  if (( millis() % 1000 ) == 0) {
+  //  if (( millis() % 1000 ) == 0) {
+  if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
     Serial.print(F("# vChgGrms: "));  Serial.print  (vChgGrms);
     Serial.print(F(" pwmdOutp: "));   Serial.print  (pwmdOutp);
     Serial.print(F(" vHtrLoss: "));   Serial.print  (vHtrLoss);
@@ -2339,9 +2339,9 @@ void userLoop() {
     // Dc14 
     userCmdl = Serial.readStringUntil('\n');
     //fromSeri = Serial.readStringUntil('\n');
-    //for ( tempIndx = 0; tempIndx < sizeof(userCmdl); tempIndx++ ) {
-    //  userCmdl[tempIndx] = fromSeri.charAt(tempIndx) ;
-    //  if (fromSeri.charAt(tempIndx) == '\0') {break;}
+    //for ( tempIntA = 0; tempIntA < sizeof(userCmdl); tempIntA++ ) {
+    //  userCmdl[tempIntA] = fromSeri.charAt(tempIntA) ;
+    //  if (fromSeri.charAt(tempIntA) == '\0') {break;}
     //}  
     //userCmdl[sizeof(userCmdl)] = '\0';
     //Serial.println(F("# loop"));
@@ -2402,23 +2402,23 @@ void userSvce() {
     if ((userCmdl[0] == 'P') && (userCmdl[1] == 'I') && (userCmdl[2] == 'D')) {
       if ((userCmdl[3] == ';') && (userCmdl[4] == 'T')) {
         // PID;T;Kp;Ki;Kd tuning values
-        tempIndx = userCmdl.indexOf( ';' , 6);              // find second ';'
-        if (tempIndx < sizeof( userCmdl)) { 
-          pidcKp = (userCmdl.substring(6, tempIndx)).toFloat();
+        tempIntA = userCmdl.indexOf( ';' , 6);              // find second ';'
+        if (tempIntA < sizeof( userCmdl)) { 
+          pidcKp = (userCmdl.substring(6, tempIntA)).toFloat();
         }  
-        tempIndy = userCmdl.indexOf( ';' , tempIndx);       // find third  ';'
-        if (tempIndy < sizeof( userCmdl)) { 
+        tempIntB = userCmdl.indexOf( ';' , tempIntA);       // find third  ';'
+        if (tempIntB < sizeof( userCmdl)) { 
           // Artisan's Ki converted to Ti by taking reciprocal 
-          userArgf = (userCmdl.substring(tempIndx, tempIndy)).toFloat();
-          if ( userArgf <= 0.00 ) {
+          tempFltA = (userCmdl.substring(tempIntA, tempIntB)).toFloat();
+          if ( tempFltA <= 0.00 ) {
             pidcTi = 99999.99; 
           } else {
-            pidcTi = ( 1.00 / userArgf);
+            pidcTi = ( 1.00 / tempFltA);
           }  
         }  
-        tempIndx = userCmdl.indexOf( ';' , tempIndy);       // find fourth ';'
-        if (tempIndy < sizeof( userCmdl)) { 
-          pidcTd = (userCmdl.substring(tempIndy, tempIndx)).toFloat();
+        tempIntA = userCmdl.indexOf( ';' , tempIntB);       // find fourth ';'
+        if (tempIntB < sizeof( userCmdl)) { 
+          pidcTd = (userCmdl.substring(tempIntB, tempIntA)).toFloat();
         }
         Serial.print(F("# New PID Kp, Ti, Kd: "));
         Serial.print(   pidcKp);
@@ -2445,8 +2445,8 @@ void userSvce() {
     if ((userCmdl[0] == 'R') && (userCmdl[1] == 'E') && (userCmdl[2] == 'A')) {
       //
       //bbrdArti();
-      for ( tempIndx = 0; tempIndx < sizeof(artiResp) - 1; tempIndx++ ) {
-        Serial.print(artiResp[tempIndx]);
+      for ( tempIntA = 0; tempIntA < sizeof(artiResp) - 1; tempIntA++ ) {
+        Serial.print(artiResp[tempIntA]);
       }  
       Serial.println(F(""));
       //Serial.println(artiResp);
@@ -2592,8 +2592,15 @@ void userSvce() {
     }  
   }
   if (userCmdl[0] == 'M') {
-    vChgGrms = (userCmdl.substring(1)).toInt();
-    if (vChgGrms < 1 ) vChgGrms = 1;
+    // temp hold new bean mass to compare with old  
+    tempIntB = (userCmdl.substring(1)).toInt();
+    // Gets unstable with v low masses 
+    if (tempIntB < 10 ) tempIntB = 10;
+    // Beans added at ambient, reduce wkng temp towards ambient
+    if (tempIntB > vTmpDegC) {
+      vTmpDegC = float(ambiTmpC) + vChgGrms / ( vChgGrms + tempIntB ) * ( vTmpDegC - float(ambiTmpC));
+    }
+    vChgGrms = tempIntB;
     Serial.print(F("# New Chg gram: "));
     Serial.println(vChgGrms);
   }
@@ -2729,8 +2736,8 @@ void userSvce() {
     }  
   }
 //  clean out cmdLine 
-  for ( tempIndx = 0; tempIndx < sizeof(userCmdl); tempIndx++ ) {
-    userCmdl[tempIndx] = ' ';
+  for ( tempIntA = 0; tempIntA < sizeof(userCmdl); tempIntA++ ) {
+    userCmdl[tempIntA] = ' ';
   }  
   //userCmdl = "";
 }
