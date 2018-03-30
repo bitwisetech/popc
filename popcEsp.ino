@@ -42,7 +42,7 @@
 //  Jff     Set PID D-Term gain (Float Td: lower value == lower  gain)
 //  Kff     Set PID Gain TComp  (Float Kappa: 0 == no Temp comp)
 //  l/L     Send Artisan CSV format on serial ( for capture and Artisan Import )  
-//  m/M     Rsvd MQTT msg  
+//  m/M     Rsvd MQTT msg / Set bean Mass for virtual tcpl  
 //  NORM    Break serial out of Artisan speak
 //  n/N     Rsvd NetSock + 
 //  o       Off~/On PID run 
@@ -94,12 +94,12 @@
 //               Copy from /.arduino15/packages/esp8266/hardware/esp8266/2.3.0/libraries/Ticker/Ticker.h
 //
 //  Code compiler switches: 1/0 Enab/Dsel UNO-ESP proc HW, Wifi options - Rebuild, Upload after changing these 
-#define PROC_UNO      0                  // Compile for Arduino Uno
-#define NEWP_UNO      0                  // Uno new pins layout
-#define PROC_ESP      1                  // Compile for ESP8266
+#define PROC_UNO      1                  // Compile for Arduino Uno
+#define NEWP_UNO      1                  // Uno new pins layout
+#define PROC_ESP      0                  // Compile for ESP8266
 #define WITH_LCD      0                  // Hdwre has I2C 2x16 LCD display
 #define WITH_MAX31855 0                  // Hdwre has thermocouple + circuit
-#define WITH_PCF8574  1                  // Hdwre has I2C I/O Extender      
+#define WITH_PCF8574  0                  // Hdwre has I2C I/O Extender      
 #define WITH_OFFN     0                  // Use ~250cy via mill Off-On SSR, not fast h/w PWM
 #define WIFI_MQTT     0                  // Compile for Wifi MQTT clientF
 #define WITH_WIFI     0                  // Compile for Wifi MQTT clientF
@@ -375,7 +375,6 @@ char userScal   = 'C';
 //
 String fromSeri;
 String     userCmdl("                               ");  // 39Chrs + null
-//String     userCmdl = "                               ";  // 39Chrs + null
 char   userChrs[] = "023.0,128.8,138.8,000.0,000.0           ";  // 40sp 39 + nullch 
 
 #if IFAC_FRNT
@@ -498,15 +497,16 @@ profTplt profStep( int prof ) {
 
 // pwmd vbls
 int  pwmdFreq, pwmdDuty, pwmdTarg, pwmdOutp;                          // Freq, Duty Cycle Target (255max) Output
-int  heatHist[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }; // mavg 16  for virtTcpl 
-#define vHtrWatt 1500
-#define vChgGrms 250
-#define vTmpMaxC 260
+int vHtrWatt = 1500;
+int vChgGrms = 250;
+int vTmpMaxC = 260;
 #define vChgSpht 0.2 
 int     vPrvMSec;
-float   vTmpDegC, vTmpDegF; 
+float   vTmpDegC = ambiTmpC; 
+float   vTmpDegF = ((ambiTmpC + 40 ) * (9.0 / 5.0 )) - 40 ;
 //
-int  degCHist[] = { 0, 0, 0, 0, 0, 0, 0, 0};                          // mavg store for temp rate of change 
+int  degCHist[] = { ambiTmpC, ambiTmpC, ambiTmpC, ambiTmpC, \
+                    ambiTmpC, ambiTmpC, ambiTmpC, ambiTmpC};                          // mavg store for temp rate of change 
 byte pwmdPcnt;                                                        // Percent duty cycle 
 
 // Run Cntl vbls  Bit 0:Run 1:Atto 2:Manu 3:Attn 4:spare 5:Dbug 6:Arti 7:Info 
@@ -593,7 +593,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t lenght
     case WStype_CONNECTED: {
       IPAddress ip = webSocket.remoteIP(num);
       if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-        USE_SERIAL.printf("[%u] popcSockSrvr Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
+        USE_SERIAL.printf("# [%u] popcSockSrvr Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
       }  
     	// send message to client
 		  webSocket.sendTXT(num, "popcSockSrvr acks Connected");
@@ -602,7 +602,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t lenght
     case WStype_TEXT:
       //if ( !(  Rctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
       if ( !( bbrdRctl & RCTL_ARTI ) ) {
-        USE_SERIAL.printf("popcSockSrvr [%u] get Text: %s\n", num, payload);
+        USE_SERIAL.printf("# popcSockSrvr [%u] get Text: %s\n", num, payload);
       }  
       // send message to client
       // webSocket.sendTXT(num, "popcSockSrvr message here");
@@ -612,7 +612,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t lenght
     break;
     case WStype_BIN:
     if ( !( bbrdRctl & RCTL_ARTI ) ) {
-      USE_SERIAL.printf("[%u] popcSockSrvr get binary length: %u\n", num, lenght);
+      USE_SERIAL.printf("# [%u] popcSockSrvr get binary length: %u\n", num, lenght);
     }  
     hexdump(payload, lenght);
 
@@ -632,8 +632,8 @@ int           userDuty, userDgpm, sensCdpm;   // userSet duty cycle; userSet C/F
 int           userAOT1, userAOT2, userAIO3;   // Arti OT1Dty, Arti OT2Dty, Arti IO3Dty 
 int           baseTmpC, rampCdpm, holdTmpC;   // Ramp start temp, hold at  endpoint 
 int           stepSecs, holdTogo, totlSecs;   // Step elapsed, hold countdown, total run time
-int           userDegs, tempIndx;             // User C/F temp,  temporary array indexer
-
+int           userDegs, tempIndx, tempIndy;   // User C/F temp,  temporary array indexers
+float         userArgf;                       // Float arg extracted from userCmdl
 /// Common 
 //    Convert
 float floatCtoF( float celsInp) {
@@ -1067,7 +1067,7 @@ void discCbck() {
     popcMqtt.connect();
     delay(2000);
     if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-      Serial.println("Wifi Mqtt.connect timed out. calling popcSubs()");
+      Serial.println("# Wifi Mqtt.connect timed out. calling popcSubs()");
     }  
     //Je18     
     popcSubs();
@@ -1077,7 +1077,7 @@ void discCbck() {
 void publCbck() {
   //if ( 0 ) {
   //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-  //  Serial.println("popc publCbck");
+  //  Serial.println("# popc publCbck");
   //}  
 }
 
@@ -1086,7 +1086,7 @@ void dataCbck(String& topic, String& data) {
   float topiValu;
   if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
   //if ( 0 ) {
-    Serial.print("dataCbck topic:");
+    Serial.print("# dataCbck topic:");
     Serial.print(topic);
     Serial.print("   data:");
     Serial.println(data);
@@ -1097,7 +1097,7 @@ void dataCbck(String& topic, String& data) {
     if ( topiValu != pidcKp) {
       pidcKp = topiValu;
       if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-        Serial.print("dataCbck-new Kp: ");
+        Serial.print("# dataCbck-new Kp: ");
         Serial.println(topiValu);
       }  
     }  
@@ -1108,7 +1108,7 @@ void dataCbck(String& topic, String& data) {
     if ( topiValu != pidcTd) {
       pidcTd = topiValu;
       if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-        Serial.print("dataCbck-new Td: ");
+        Serial.print("# dataCbck-new Td: ");
         Serial.println(topiValu);
       }  
     }  
@@ -1119,7 +1119,7 @@ void dataCbck(String& topic, String& data) {
     if ( topiValu != pidcTi) {
       pidcTi = topiValu;
       if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-        Serial.print("dataCbck-new Ti: ");
+        Serial.print("# dataCbck-new Ti: ");
         Serial.println(topiValu);
       }  
     }  
@@ -1130,7 +1130,7 @@ void dataCbck(String& topic, String& data) {
     if ( topiValu != pidcBeta) {
       pidcBeta = topiValu;
       if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-        Serial.print("dataCbck-new Beta: ");
+        Serial.print("# dataCbck-new Beta: ");
         Serial.println(topiValu);
       }  
     }  
@@ -1141,7 +1141,7 @@ void dataCbck(String& topic, String& data) {
     if ( topiValu != pidcGamma) {
       pidcGamma = topiValu;
       if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-        Serial.print("dataCbck-new Gamma: ");
+        Serial.print("# dataCbck-new Gamma: ");
         Serial.println(topiValu);
       }  
     }  
@@ -1163,7 +1163,7 @@ void dataCbck(String& topic, String& data) {
   userRctl |= RCTL_ATTN; 
   //if ( 0 ) {
   if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-    Serial.print("dataCbck-userCmdl - ");
+    Serial.print("# dataCbck-userCmdl - ");
     Serial.println(userCmdl);
   }
 }
@@ -1192,7 +1192,7 @@ void wrapPubl( const char * tTops , const char * tVals, int tInt ) {
 //pupSub / ESP ticker callbacks and service 
 void cbck1000() {
   //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-  //  Serial.println("cbck1000 sets cb10Rctl ATTN");
+  //  Serial.println("# cbck1000 sets cb10Rctl ATTN");
   //}  
   cb10Rctl |= RCTL_ATTN;
 }
@@ -1209,7 +1209,7 @@ void cb10Svce() {
   wrapPubl( (const char * )ArspTops , (const char * )artiProg, sizeof(artiProg) ); 
   //
   //if ( rCode) {
-    //Serial.print("cbck1000 bad      RC: ");
+    //Serial.print("# cbck1000 bad      RC: ");
     //Serial.println(rCode);
   //}
   //
@@ -1219,7 +1219,7 @@ void cb10Svce() {
 void cbck2000() {
   if ( 0 ) {
   //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-    Serial.println("cbck200 sets cb10Rctl ATTN");
+    Serial.println("# cbck200 sets cb10Rctl ATTN");
   }  
   //
   cb20Rctl |= RCTL_ATTN;
@@ -1227,7 +1227,7 @@ void cbck2000() {
 
 void cb20Svce() {
   //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-    //Serial.println("cb20Svce");
+    //Serial.println("# cb20Svce");
   int rCode = 0;
   // Artisan interface                      'Read' Cmd; Send Ambient:Targ:Sens:Prof:Duty
   if ( userScal == fahrScal) {
@@ -1291,7 +1291,7 @@ void cb20Svce() {
 void cbck9000() {
   if ( 0 ) {
   // if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-    Serial.println("cbck9000 sets cb90Rctl ATTN");
+    Serial.println("# cbck9000 sets cb90Rctl ATTN");
   }  
   cb90Rctl |= RCTL_ATTN;
 }
@@ -1329,11 +1329,11 @@ void cb90Svce() {
   wrapPubl( (const char * )ptmpTops, (const char *)(mqttVals), sizeof(mqttVals) ); 
   //
   //if ( rCode) {
-    //Serial.print("cb90Svce bad cuml RC: ");
+    //Serial.print("# cb90Svce bad cuml RC: ");
     //Serial.println(rCode);
   //}
   //if ( rCode) {
-    //Serial.print("cbck9000 bad cuml RC: ");
+    //Serial.print("# cbck9000 bad cuml RC: ");
     //Serial.println(rCode);
   //}
   cb90Rctl &= ~RCTL_ATTN;
@@ -1349,7 +1349,7 @@ void wrapSubs( const char * tTops ) {
 #endif
 #endif
   if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-    Serial.print  ("wrapSubs popcMqtt.subscribe topic : ");
+    Serial.print  ("# wrapSubs popcMqtt.subscribe topic : ");
     Serial.println(tTops);
     Serial.print  (" RC : ");
     Serial.println(rCode);
@@ -1401,7 +1401,7 @@ void millLoop() {
     // max mill rate 5uSec per on-off
     if ( !(millStep % 1000) )  {
       if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-        Serial.print  ("adc0:");  Serial.print  (adc0Curr);
+        Serial.print  ("# adc0:");  Serial.print  (adc0Curr);
         Serial.print  (" Maxi:"); Serial.print  (adc0Maxi);
         Serial.print  (" Mini:"); Serial.print  (adc0Mini);
         Serial.print  (" Avge:"); Serial.println(adc0Avge);
@@ -1495,7 +1495,7 @@ void pidcFprm() {
   EEPROM.get( EADX_KP, fromEprm);
   if ( pidcKp != fromEprm) {
     if ( !( bbrdRctl & RCTL_ARTI ) ) {
-      Serial.print(F("New Kp from EEPROM:"));
+      Serial.print(F("# New Kp from EEPROM:"));
       Serial.println(fromEprm);
     }
     pidcKp = fromEprm; 
@@ -1504,7 +1504,7 @@ void pidcFprm() {
   EEPROM.get( EADX_TI, fromEprm);
   if ( pidcTi != fromEprm) {
     if ( !( bbrdRctl & RCTL_ARTI ) ) {
-      Serial.print(F("New TiKp from EEPROM:"));
+      Serial.print(F("# New TiKp from EEPROM:"));
       Serial.println(fromEprm);
     }
     pidcTi =  fromEprm; 
@@ -1513,7 +1513,7 @@ void pidcFprm() {
   EEPROM.get( EADX_TD, fromEprm);
   if ( pidcTd != fromEprm) {
     if ( !( bbrdRctl & RCTL_ARTI ) ) {
-      Serial.print(F("New Kp from EEPROM:"));
+      Serial.print(F("# New Kp from EEPROM:"));
       Serial.println(fromEprm);
     }
     pidcTd = fromEprm; 
@@ -1522,7 +1522,7 @@ void pidcFprm() {
   EEPROM.get( EADX_BE, fromEprm);
   if ( pidcBeta != fromEprm) {
     if ( !( bbrdRctl & RCTL_ARTI ) ) {
-      Serial.print(F("New Kp from EEPROM:"));
+      Serial.print(F("# New Kp from EEPROM:"));
       Serial.println(fromEprm);
     }
     pidcBeta = fromEprm; 
@@ -1531,7 +1531,7 @@ void pidcFprm() {
   EEPROM.get( EADX_KA, fromEprm);
   if ( pidcKappa != fromEprm) {
     if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-      Serial.print(F(" New Ka from EEPROM:"));
+      Serial.print(F("# New Ka from EEPROM:"));
       Serial.println(fromEprm);
     }
     pidcKappa = fromEprm; 
@@ -1540,7 +1540,7 @@ void pidcFprm() {
   EEPROM.get( EADX_XB, fromEprm);
   if ( pidcXBias != fromEprm) {
     if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-      Serial.print(F("New Xb from EEPROM"));
+      Serial.print(F("# New Xb from EEPROM"));
       Serial.println(fromEprm);
     }
     pidcXBias = fromEprm; 
@@ -1549,7 +1549,7 @@ void pidcFprm() {
   EEPROM.get( EADX_YB, fromEprm);
   if ( pidcYBias != fromEprm) {
     if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-      Serial.print(F("New Yb from EEPROM"));
+      Serial.print(F("# New Yb from EEPROM"));
       Serial.println(fromEprm);
     }
     pidcYBias = fromEprm; 
@@ -1572,7 +1572,7 @@ void pidcInit() {
 
 //
 void pidcInfo() {
-  Serial.print(F("PIDC   Kp:"));
+  Serial.print(F("# PIDC   Kp:"));
   Serial.print(pidcKp);
   Serial.print(F(" Ti:"));
   Serial.print(pidcTi);
@@ -1654,14 +1654,14 @@ void pidcLoop() {
         dUn = pidcUMax - Un1;
         if (pidcRctl & RCTL_DIAG ) {
           if ( !( bbrdRctl & RCTL_ARTI )  ) {
-            Serial.println(F("maxSatn"));
+            Serial.println(F("# maxSatn"));
           }  
         }  
       } else if ( dUn < (pidcUMin - Un1) ) {
         dUn = pidcUMin - Un1;
         if (pidcRctl & RCTL_DIAG ) {
           if ( !( bbrdRctl & RCTL_ARTI )  ) {
-            Serial.println(F("minSatn"));
+            Serial.println(F("# minSatn"));
           }  
         }  
       }
@@ -1825,7 +1825,7 @@ void profLoop() {
       degCHist[0] = int(sensTmpC);
       prevTmpC    = sensTmpC;
       //  if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-        //Serial.print("Curr:");
+        //Serial.print("# Curr:");
         //Serial.print(sensTmpC);
         //Serial.print(" Prev:");
         //Serial.print(prevTmpC);
@@ -1852,7 +1852,7 @@ void profLoop() {
         //}  
         Serial.println(" ");
         // Rotswitch 
-        //Serial.print("Rots: ");
+        //Serial.print("# Rots: ");
         //Serial.print(rotsValu());
         //Serial.print("    ");
         //Serial.print("tcplRctl: ");
@@ -1973,7 +1973,7 @@ void pwmdLoop() {
     //
     if ( (pwmdRctl & RCTL_RUNS) == 0) {
       if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-        Serial.print("pwmdRctl==0");
+        Serial.print("# pwmdRctl==0");
       }  
       pwmdOutp = 0;
     } else {
@@ -1981,7 +1981,7 @@ void pwmdLoop() {
       if ( pwmdRctl & RCTL_MANU) {
         pwmdTarg = byte( 255.0 * userDuty / 100.0 );
         //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-          //Serial.print("pwmdTarg: ");
+          //Serial.print("# pwmdTarg: ");
           //Serial.println(pwmdTarg);
         //}  
       }
@@ -2051,7 +2051,7 @@ void rotsLoop() {
         // steady value changed from previous
         rotsCurr = rotsNewb;
         if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-          Serial.print("Rots:");
+          Serial.print("# Rots:");
           Serial.print(rotsCurr);
         }  
         // manage rotary switch settings
@@ -2164,15 +2164,15 @@ void tcplRealLoop() {
       tResp    = tcpl.read();
       if ( 0 ) {
       // block tcpl diags if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-        Serial.print("tcpl Stat:");
+        Serial.print(F("# tcpl Stat:"));
         Serial.print(tcpl.getStatus());
-        Serial.print(" Fctr:");
+        Serial.print(F(" Fctr:"));
         Serial.print(tcpl.getTCfactor());
-        Serial.print(" Ofst:");
+        Serial.print(F(" Ofst:"));
         Serial.print(tcpl.getOffset());
-        Serial.print(" ITmp:");
+        Serial.print(F(" ITmp:"));
         Serial.print(tcpl.getInternal());
-        Serial.print(" TdegC:");
+        Serial.print(F(" TdegC:"));
         Serial.println(tcpl.getTemperature());
       }  
       // getTemperature returns internal variable from read()
@@ -2194,7 +2194,7 @@ void tcplRealLoop() {
         lcd.setCursor ( 0, 1 );
 #endif
         if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-          Serial.print(" Sense: ");
+          Serial.print(F("# Sense: "));
         }  
         switch ( tResp ) {
           case 0:
@@ -2202,7 +2202,7 @@ void tcplRealLoop() {
             lcd.println("STATUS_OK      ");
 #endif
             if ( 0 & !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-                Serial.println("OK");
+                Serial.println(F("OK"));
             }
           break;  
           case 1:
@@ -2210,7 +2210,7 @@ void tcplRealLoop() {
             lcd.println("Error - Open-Cct");
 #endif
             if ( 0 & !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-                Serial.println("Open-Cct");
+                Serial.println(F("Open-Cct"));
             }
           break;  
           case 2:
@@ -2218,7 +2218,7 @@ void tcplRealLoop() {
             lcd.println("Error - Shrt-Gnd");
 #endif
             if ( 0  & !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-              Serial.println("Shrt-Gnd");
+              Serial.println(F("Shrt-Gnd"));
             }
           break;  
           case 4:
@@ -2226,7 +2226,7 @@ void tcplRealLoop() {
             lcd.println("Error - Shrt-Vcc");
 #endif
             if (0 & !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-              Serial.println("Shrt-Vcc");
+              Serial.println(F("Shrt-Vcc"));
             }
           break;  
           default:
@@ -2234,7 +2234,7 @@ void tcplRealLoop() {
             lcd.println("Error - NReadEtc");
 #endif
             if ( 0 & !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-              Serial.println("FailCase-NOREAD");
+              Serial.println(F("FailCase-NOREAD"));
             }
           break;  
         }
@@ -2258,7 +2258,7 @@ void tcplRealLoop() {
 ///
 // virtual tcpl for debug 
 float virtTcplLoop() {
-  //Serial.println("vCall");	
+  //Serial.println(F("vCall"));	
   float vHtrLoss, vHtrCals;
   int   vMSecSmpl;
   vMSecSmpl = millis() - vPrvMSec;
@@ -2267,20 +2267,22 @@ float virtTcplLoop() {
 	return ( int(vTmpDegC));
   } else {
     vPrvMSec  = millis();  
-    vHtrLoss  = (vTmpDegC - ambiTmpC) / (vTmpMaxC - ambiTmpC ) * vHtrWatt; 
-    vHtrCals  = ((pwmdOutp / 255.0) * vHtrWatt  - vHtrLoss ) / 4.2;
+    vHtrLoss  = (float(vTmpDegC) - float(ambiTmpC)) / (float(vTmpMaxC) - float(ambiTmpC )); 
+    vHtrCals  = ( vMSecSmpl / 1000.0) * (vHtrWatt * (pwmdPcnt / 100.0  - vHtrLoss ) / 4.2);
     vTmpDegC += vHtrCals / ( vChgGrms * vChgSpht );
     vTmpDegF  = (vTmpDegC + 40) * 9.0 / 5.0 - 40;             
+    // TC4 return(int(vTmpDegF));
+    sensTmpC = vTmpDegC;
   }
-  //if (( millis() % 1000 ) == 0) {
-  if (0)   {
-    Serial.print("# OT1:");        Serial.print  (pwmdOutp);
-    Serial.print( "  vHtrCals:");  Serial.print  (vHtrCals);
-    Serial.print( "  sensTmpC:");  Serial.print  (vTmpDegC);
-    Serial.print( "  sensTmpF:");  Serial.println(vTmpDegF);
+  //
+  if (( millis() % 1000 ) == 0) {
+    Serial.print(F("# vChgGrms: "));  Serial.print  (vChgGrms);
+    Serial.print(F(" pwmdOutp: "));   Serial.print  (pwmdOutp);
+    Serial.print(F(" vHtrLoss: "));   Serial.print  (vHtrLoss);
+    Serial.print(F(" vHtrCals: "));   Serial.print  (vHtrCals);
+    Serial.print(F(" vTmpDegC: "));   Serial.print  (vTmpDegC);
+    Serial.print(F(" vTmpDegF:" ));   Serial.println(vTmpDegF);
   }  
-  // TC4 return(int(vTmpDegF));
-  sensTmpC = vTmpDegC;
 }
 
 //
@@ -2294,7 +2296,7 @@ byte twioRead8() {
   twioWrite8( 0xFF & TWIO_IMSK );
   twioCurr = twio.read8();
   //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-  //  Serial.print("twioRead8:");
+  //  Serial.print(f("# twioRead8:"));
   //  Serial.println(twioCurr);
   //}  
   return twioCurr;
@@ -2303,7 +2305,7 @@ byte twioRead8() {
 void twioWrite8( byte tByt ) {
   twio.write8( tByt);
   //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-  //  Serial.print("twioWrite8: ");
+  //  Serial.print(f("# twioWrite8: "));
   //  Serial.println(tByt);
   //}  
 }
@@ -2311,7 +2313,7 @@ void twioWrite8( byte tByt ) {
 void twioWritePin( byte tPin, byte tByt) {
   twio.write( tPin, tByt);
   //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-  //  Serial.print("twioWritePin: ");
+  //  Serial.print(Ff("# twioWritePin: "));
   //  Serial.println(tByt);
   //}  
 }
@@ -2342,7 +2344,7 @@ void userLoop() {
     //  if (fromSeri.charAt(tempIndx) == '\0') {break;}
     //}  
     //userCmdl[sizeof(userCmdl)] = '\0';
-    //Serial.println("loop");
+    //Serial.println(F("# loop"));
     //Serial.println(userCmdl);
     userRctl |= RCTL_ATTN;
   }
@@ -2351,7 +2353,7 @@ void userLoop() {
 void userSvce() {
   // called from loop() if (userRctl & RCTL_ATTN) via MQTT, rotsLoop or Serial
   if ( (!( bbrdRctl & RCTL_ARTI )) && ( bbrdRctl & RCTL_DIAG) ) {
-    Serial.print ("userSvce usderCmdl : ");
+    Serial.print (F("# userSvce usderCmdl : "));
     Serial.println(userCmdl);
   }  
   // Drop Attn flag immediately so not masked during process
@@ -2364,7 +2366,7 @@ void userSvce() {
     // Artisan CHAN command 
     if ((userCmdl[0] == 'C') && (userCmdl[1] == 'H') && (userCmdl[2] == 'A')) {
       //  'chan' command, respond '#'
-      Serial.println("#");
+      Serial.println(F("#"));
     }  
     if ((userCmdl[0] == 'I') && (userCmdl[1] == 'O') && (userCmdl[2] == '3')) {
       // Cmd : IO3 
@@ -2377,7 +2379,7 @@ void userSvce() {
     if ((userCmdl[0] == 'N') && (userCmdl[1] == 'O') && (userCmdl[2] == 'R') && (userCmdl[3] == 'M')) {
       // Cmd : Escape autoArti 
       bbrdRctl &= ~RCTL_ARTI; 
-      Serial.println("# Serial  <=> Console");
+      Serial.println(F("# Serial  <=> Console"));
     }
     if ((userCmdl[0] == '0') && (userCmdl[1] == 'T') && (userCmdl[2] == '1')) {
       // Cmd : IO3 
@@ -2398,6 +2400,31 @@ void userSvce() {
 
     }
     if ((userCmdl[0] == 'P') && (userCmdl[1] == 'I') && (userCmdl[2] == 'D')) {
+      if ((userCmdl[3] == ';') && (userCmdl[4] == 'T')) {
+        // PID;T;Kp;Ki;Kd tuning values
+        tempIndx = userCmdl.indexOf( ';' , 6);              // find second ';'
+        if (tempIndx < sizeof( userCmdl)) { 
+          pidcKp = (userCmdl.substring(6, tempIndx)).toFloat();
+        }  
+        tempIndy = userCmdl.indexOf( ';' , tempIndx);       // find third  ';'
+        if (tempIndy < sizeof( userCmdl)) { 
+          // Artisan's Ki converted to Ti by taking reciprocal 
+          userArgf = (userCmdl.substring(tempIndx, tempIndy)).toFloat();
+          if ( userArgf <= 0.00 ) {
+            pidcTi = 99999.99; 
+          } else {
+            pidcTi = ( 1.00 / userArgf);
+          }  
+        }  
+        tempIndx = userCmdl.indexOf( ';' , tempIndy);       // find fourth ';'
+        if (tempIndy < sizeof( userCmdl)) { 
+          pidcTd = (userCmdl.substring(tempIndy, tempIndx)).toFloat();
+        }
+        Serial.print(F("# New PID Kp, Ti, Kd: "));
+        Serial.print(   pidcKp);
+        Serial.print(   pidcTi);
+        Serial.println( pidcTd);
+      }
       if ((userCmdl[4] == 'S') && (userCmdl[5] == 'V')) {
         // set desired temperatre degC
         userDegs = (userCmdl.substring(7)).toInt();
@@ -2414,9 +2441,6 @@ void userSvce() {
         pwmdRctl &= ~RCTL_MANU;
         pwmdRctl |=  RCTL_AUTO;
       }  
-      if ((userCmdl[3] == ',') && (userCmdl[4] == 'T')) {
-        // PID,T,P,I,D cmd new PID gains 
-      }
     }
     if ((userCmdl[0] == 'R') && (userCmdl[1] == 'E') && (userCmdl[2] == 'A')) {
       //
@@ -2424,7 +2448,7 @@ void userSvce() {
       for ( tempIndx = 0; tempIndx < sizeof(artiResp) - 1; tempIndx++ ) {
         Serial.print(artiResp[tempIndx]);
       }  
-      Serial.println("");
+      Serial.println(F(""));
       //Serial.println(artiResp);
     }
     //  'unit' command, set user scale 
@@ -2440,10 +2464,10 @@ void userSvce() {
     // Toggle Artisan Interface
     if ( bbrdRctl & RCTL_ARTI ) {
       bbrdRctl &= ~RCTL_ARTI; 
-      Serial.println("# Serial  <=> Console");
+      Serial.println(F("# Serial  <=> Console"));
     } else {
       bbrdRctl |=  RCTL_ARTI;
-      Serial.println("# Serial  <=> Artisan");
+      Serial.println(F("# Serial  <=> Artisan"));
     }
   }
   // B  put pidc Beta term 
@@ -2455,7 +2479,7 @@ void userSvce() {
   if ((userCmdl[0] == 'C') && (userCmdl[1] == 'H') && (userCmdl[2] == 'A') && (userCmdl[3] == 'N')) {
     bbrdRctl |=  RCTL_ARTI;
     //  'chan' command, respond '#'    
-    Serial.println("#");
+    Serial.println(F("#"));
   }  
   //  c/C set Centigrade units 
   if (((userCmdl[0] == 'C') || (userCmdl[0] == 'c')) && (userCmdl[1] != 'H')) {
@@ -2464,11 +2488,11 @@ void userSvce() {
   // d/D Toggle Diagnostic Flag
   if ((userCmdl[0] == 'D') || (userCmdl[0] == 'd')) {
     if ( bbrdRctl & RCTL_DIAG ) {
-      Serial.println("# Diagnostics Mode  is InActive");
+      Serial.println(F("# Diagnostics Mode  is InActive"));
       bbrdRctl &= ~RCTL_DIAG; 
     } else {
       bbrdRctl |=  RCTL_DIAG; 
-      Serial.println("# Diagnostics Mode  is   Active");
+      Serial.println(F("# Diagnostics Mode  is   Active"));
     }
   }
   // e Readback EEPROM values 
@@ -2567,11 +2591,17 @@ void userSvce() {
       bbrdRctl |= RCTL_INFO; 
     }  
   }
-  if ((userCmdl[0] == 'm') || (userCmdl[0] == 'M')) {
+  if (userCmdl[0] == 'M') {
+    vChgGrms = (userCmdl.substring(1)).toInt();
+    if (vChgGrms < 1 ) vChgGrms = 1;
+    Serial.print(F("# New Chg gram: "));
+    Serial.println(vChgGrms);
+  }
+  if (userCmdl[0] == 'm'){
     // TBD stored profile from memory 
     profNmbr = (userCmdl.substring(1)).toInt();
     if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-      //Serial.println(F("userfSele"));
+      //Serial.println(F("# userfSele"));
     }  
     stepSecs = 0;
   }
@@ -2638,7 +2668,7 @@ void userSvce() {
   }
   if ((userCmdl[0] == 'U') || (userCmdl[0] == 'u')) {
     if  (!( bbrdRctl & RCTL_ARTI )) {
-      Serial.print("pwmdFreq: ");
+      Serial.print(F("# pwmdFreq: "));
       Serial.println(pwmdFreq);
     }  
   }
@@ -2655,11 +2685,11 @@ void userSvce() {
     userDuty = (userCmdl.substring(1, 5)).toInt();
     if (userDuty > 99) userDuty = 100;
     if ((bbrdRctl & RCTL_DIAG) == RCTL_DIAG) {  
-      Serial.print("Manu userDuty: ");
+      Serial.print(F("# Manu userDuty: "));
       Serial.println(userDuty);
     }  
-    Serial.print("# manu pwm: ");
-    Serial.println(userDuty);
+    //Serial.print("# New PWM: ");
+    //Serial.println(userDuty);
     if ( userDuty == 0) {
       // Power off: Sense ambient ( fan htr pwr), temp setpt to meas ambient
       targTmpC = ambiTmpC;
@@ -2727,7 +2757,7 @@ void setup() {
   if (wifiRctl & RCTL_RUNS) {
     if ( (bbrdRctl & RCTL_ARTI) == 0) {
       Serial.println();
-      Serial.print(F("PROC_ESP : setup Init wifi to upward SSID:"));
+      Serial.print(F("# PROC_ESP : setup Init wifi to upward SSID:"));
       Serial.println(upwdSsid);
     } 
 #if WIFI_WMAN
@@ -2737,13 +2767,13 @@ void setup() {
     ////wifiManager.setAPStaticIPConfig(IPAddress(10,0,1,1), IPAddress(10,0,1,1), IPAddress(255,255,255,0));
     //first parameter is name of access point, second is the password
     if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-      Serial.println("WIFI_WMAN : init call popcMqtt.autoConnect");
+      Serial.println(F("# WIFI_WMAN : init call popcMqtt.autoConnect"));
     }  
     wifiManager.autoConnect(dnwdSsid, dnwdPswd);
 #endif // WIFI_WMAN
 #if WIFI_SOKS
     if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-      Serial.print(F("WIFI_SOKS WebS Init"));
+      Serial.print(F("# WIFI_SOKS WebS Init"));
     }  
     //  WebSockets
     //Serial.setDebugOutput(true);
@@ -2760,7 +2790,7 @@ void setup() {
     delay(1000);
     }
     if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-      Serial.println("WMul : add upbd AP  (local IP: ) ");
+      Serial.println(F("# WMul : add upbd AP  (local IP: ) "));
       Serial.println(WiFi.localIP());
     }  
     //WiFiMulti.addAP("SSID", "passpasspass");
@@ -2768,7 +2798,7 @@ void setup() {
     //
     while(WiFiMulti.run() != WL_CONNECTED) {
       if ( (bbrdRctl & RCTL_ARTI) == 0) {
-        Serial.print("~");
+        Serial.print(F("~"));
       }  
       delay(250);
     }
@@ -2784,12 +2814,12 @@ void setup() {
     WiFi.begin(upwdSsid, upwdPswd);
     while (WiFi.status() != WL_CONNECTED) {
       if ( (bbrdRctl & RCTL_ARTI) == 0) {
-        Serial.print("!");
+        Serial.print(F("!"));
       }  
       delay(1000);
     }  
     if ( !( bbrdRctl & RCTL_ARTI ))  {
-      Serial.println("WiFi connected as local IP:");
+      Serial.println(F("# WiFi connected as local IP:"));
       Serial.println(WiFi.localIP());
     }  
 #endif // WIFI_SOKS
@@ -2801,12 +2831,12 @@ void setup() {
     popcMqtt.onPublished(publCbck);
     popcMqtt.onData(dataCbck);
     if ( !( bbrdRctl & RCTL_ARTI)) {
-      Serial.println("WIFI_MQTT : call popcMgtt.Connect()");
+      Serial.println(F("# WIFI_MQTT : call popcMgtt.Connect()"));
     }  
     popcMqtt.connect();
     delay(18000);
     if ( !( bbrdRctl & RCTL_ARTI ) ) {
-      Serial.println("Wifi Mqtt.connect timed out. calling popcSubs()");
+      Serial.println(F("# Wifi Mqtt.connect timed out. calling popcSubs()"));
     }  
     //
     popcSubs();
@@ -2827,7 +2857,7 @@ void setup() {
   lcdsInit();
 #endif
   if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-    Serial.println("popcEsp init() ends");
+    Serial.println(F("# popcEsp init() ends"));
   } 
 }  
 
@@ -2869,6 +2899,5 @@ void loop() {
 #endif  // WIFI_SOKS
 #endif  // PROC_ESP && WITH_WIFI
   //frntLoop();
-  // Why 
-  delay(10);
+  // Why   delay(10);
 }
