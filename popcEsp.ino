@@ -26,7 +26,7 @@
 //  UNC            Set units to Centigrade 
 //  UNF            Set units to Fahrenheit
 //  PID SV nnn     Set new target setpoint temp to nnn
-//                 ** 'CHA' cmd causes auto-switch into AArtisan speak            
+//                 ** 'CHA' cmd causes auto-switch into Artisan speak            
 // 
 //  Command & LCD Indicators; Upcase: User Set; LowCase: Auto/Sensed/Readback value 
 //  a/A     Set serial interface to Artisan talk
@@ -94,9 +94,9 @@
 //               Copy from /.arduino15/packages/esp8266/hardware/esp8266/2.3.0/libraries/Ticker/Ticker.h
 //
 //  Code compiler switches: 1/0 Enab/Dsel UNO-ESP proc HW, Wifi options - Rebuild, Upload after changing these 
-#define PROC_UNO      1                  // Compile for Arduino Uno
-#define NEWP_UNO      1                  // Uno new pins layout
-#define PROC_ESP      0                  // Compile for ESP8266
+#define PROC_UNO      0                  // Compile for Arduino Uno
+#define NEWP_UNO      0                  // Uno new pins layout
+#define PROC_ESP      1                  // Compile for ESP8266
 #define WITH_LCD      0                  // Hdwre has I2C 2x16 LCD display
 #define WITH_MAX31855 0                  // Hdwre has thermocouple + circuit
 #define WITH_PCF8574  0                  // Hdwre has I2C I/O Extender      
@@ -106,7 +106,7 @@
 #define WIFI_SOKS     0                  // Compile for Wifi Web Sckt Srvr
 #define WIFI_WMAN     0                  // Compile for Wifi Manager
 #define IFAC_ARTI     1                  // Start with Artisan interface on Serial
-#define IFAC_FRNT     0                  // ObsofLETMP Front/Process interface on Serial 
+#define IFAC_FRNT     0                  // Obsolete Front/Process interface on Serial 
 ///
 // UNO pin assignments
 #if PROC_UNO
@@ -152,7 +152,7 @@
 // d9 needed by RFI scan  d6 would use tmr0 want d3 used by max13855
 #define PWMD_OPIN  9                        // Pin D9
 #define PWMD_MODE  OUTPUT
-#define PWMD_FREQ  31                       // UNO: timer counter range
+#define PWMD_FREQ  123                      // UNO: timer counter range
 // Rotary 16way encoder switch; D13 is LED on UNO 
 #define ROTS_BIT3  6                        // Pin Val 8 
 #define ROTS_BIT2 10                        // Pin Val 4 
@@ -180,7 +180,7 @@
 // PWM Drive SSR driver GPIO 2 BLed  
 #define PWMD_OPIN  2
 #define PWMD_MODE  OUTPUT
-#define PWMD_FREQ  33
+#define PWMD_FREQ  123
 // spi on ESP FOR tcpl
 #define TCPL_MISO 12  // SPI Mstr In Slve Out 
 #define TCPL_CLCK 14  // SPI SCk
@@ -262,16 +262,16 @@ WebSocketsServer webSocket = WebSocketsServer(5981);
 
 /// system settings 
 //  milliSecond poll values Primes to suppress beating 
-#define ADC0_POLL_MILL    2UL            // mS lcd display poll
-#define LCDS_POLL_MSEC 1000UL            // mS lcd display poll
-#define MILL_POLL_USEC 1000UL            // uS 1KHz mill   poll
-#define PIDC_POLL_MSEC  101UL            // mS pid control poll
-#define PROF_POLL_MSEC  997UL            // mS run control poll
-#define PWMD_POLL_MSEC  103UL            // mS pwm driver  poll
-#define ROTS_POLL_MSEC  503UL            // mS rotary sw   poll
-#define TCPL_POLL_MSEC   97UL            // mS termocouple poll
-#define VTCP_POLL_MSEC  251UL            // mS virt tcpl   poll
-#define POLL_SLOP_MSEC    5UL            // Avge loop time is 10mSec
+#define ADC0_POLL_MILL     2UL           // mill count for A/D 
+#define LCDS_POLL_MSEC  1000UL           // mS lcd display poll
+#define MILL_POLL_USEC 10000UL           // uS 10mSec mill poll
+#define PIDC_POLL_MSEC   101UL           // mS pid control poll
+#define PROF_POLL_MSEC   997UL           // mS run control poll
+#define PWMD_POLL_MSEC   103UL           // mS pwm driver  poll
+#define ROTS_POLL_MSEC   503UL           // mS rotary sw   poll
+#define TCPL_POLL_MSEC    97UL           // mS termocouple poll
+#define VTCP_POLL_MSEC   251UL           // mS virt tcpl   poll
+#define POLL_SLOP_MSEC     5UL           // Avge loop time is 10mSec
 //
 #if 0
 // milliSecond poll values
@@ -374,7 +374,9 @@ char userScal   = 'C';
 
 //
 String fromSeri;
-String     userCmdl("                               ");  // 39Chrs + null
+String     userCmdl("                                        "); // 39Chrs + null
+// below is incompatible with MQQQTT topic handling 
+//char   userCmdl[] = "                                        "; // 39Chrs + null
 char   userChrs[] = "023.0,128.8,138.8,000.0,000.0           ";  // 40sp 39 + nullch 
 
 #if IFAC_FRNT
@@ -1020,7 +1022,7 @@ void lcdsInit() {
   lcd.print(F("<== PopC-PID ==>"));
   lcd.setCursor ( 0, 1 );
   lcd.print(F("@bitwisetech.com"));
-  delay ( 2000 );                //  1000mS startup delay
+  delay ( 500 );                //  500mS startup delay
   lcd.clear();
   lcdsMark  =  millis() + LCDS_POLL_MSEC;
 }
@@ -1035,7 +1037,7 @@ void lcdsLoop() {
       // Rctl == 0 Shutdown
       lcd.home ();
       lcd.print(F("lcdsLoop() Halt "));
-      delay ( 1000 );                //  1000mS startup delay
+      delay ( 500 );                //  500mS startup delay
     } else {  
       //
       lcd.setCursor(0, 0); // Posn char 0  line 0
@@ -1058,7 +1060,7 @@ void connCbck() {
 void discCbck() {
   if ( !( bbrdRctl & RCTL_ARTI ) ) {
     Serial.println(F("# discCbck disc from mqtt, pause .."));
-    delay(1000);
+    delay(100);
   }  
   #if WIFI_MQTT 
   if ( !( bbrdRctl & RCTL_ARTI ) ) {
@@ -1154,7 +1156,7 @@ void dataCbck(String& topic, String& data) {
     userCmdl = String(data);
     //strncpy(userChrs, data.c_str(), sizeof(userChrs));
     //data.getBytes((byte[])userCmdl, sizeof(userCmdl));
-    //for ( tempIntA = 0; tempIntA < sizeof(userCmdl); tempIntA++ ) {
+    //for ( tempIntA = 0; tempIntA < sizeof(userCmdl); tempIntA++ ) {serloo
     //  userCmdl[tempIntA] = data.charAt(tempIntA) ;
     //  if (data.charAt(tempIntA) == '\0') {break;}
     //}  
@@ -1390,7 +1392,7 @@ void millInit() {
 }  
 
 void millLoop() {
-  // UNO nonExec: 8uS at 28uSec with 602/882uSec idle (pcf/not) exec: 400u/96Sec(pcf/not)
+  // UNO nonExec: 8uS at 28uSec with 602/882uSec idle (pcf/not) exec: 400/96uSec(pcf/not)
   // ESP 
   if ( micros() <= millMark ) {
     return;
@@ -1406,8 +1408,9 @@ void millLoop() {
         Serial.print(F(" Mini:")); Serial.print  (adc0Mini);
         Serial.print(F(" Avge:")); Serial.println(adc0Avge);
       }
-    }  
-    if ( ( pwmdPcnt * 8 )  > ( millStep % 833 ) ) {
+    }
+    // every step of mill: checck PWM %  for slow off/on output change 
+    if ( ( pwmdPcnt * 1 )  > ( millStep % 1   ) ) {
       //use Outp as trig to avoid repeated i/o traffic, set on: offn mark time 
       if (offnOutp == 0) {
         offnOutp = 1;
@@ -1432,7 +1435,7 @@ void millLoop() {
     if ( (offnRctl & RCTL_AUTO) && (millStep & 64)) {
       digitalWrite( ONBD_OPIN, (0 | ONBD_LOWON));
     }
-    // AD
+    // ESP's A/D converter is <= mill rate: controlled by ACDC_POLL_MILL  
 #if PROC_ESP
     if ( millStep >= adc0Mark ) {
       adc0Mark += adc0Poll;
@@ -1812,7 +1815,7 @@ void profLoop() {
     // Run exp mavg 5 second apart temp change 
     // ROC degrees per min is 60 * avg per second change 
     if ( totlSecs % 2 ) {
-      // time dist abot six seconds so ten samples each eand 
+      // time dist abot six seconds so ten samples each end 
       sensCdpm = ( (   2 * int(sensTmpC) + 1 * degCHist[0] + 1 * degCHist[1] + 1 * degCHist[2] )\
                     -( 2 * degCHist[7]   + 1 * degCHist[6] + 1 * degCHist[5] + 1 * degCHist[4] ) ) ; 
       degCHist[7] = degCHist[6] ;
@@ -2333,8 +2336,9 @@ void userInit() {
 void userLoop() {
   // test for when chars arriving on serial port, set ATTN
   if (Serial.available()) {
-    // wait for entire message  .. 115200cps 14 char ~ 1mSec
-    delay(100);
+    // wait for entire message  .. 115200bps 14 char ~ 1mSec
+    //
+    delay(200);
     // read all the available characters
     // Dc14 
     userCmdl = Serial.readStringUntil('\n');
@@ -2343,8 +2347,8 @@ void userLoop() {
     //  userCmdl[tempIntA] = fromSeri.charAt(tempIntA) ;
     //  if (fromSeri.charAt(tempIntA) == '\0') {break;}
     //}  
-    //userCmdl[sizeof(userCmdl)] = '\0';
-    //Serial.println(F("# loop"));
+    userCmdl[sizeof(userCmdl)-1] = '\0';
+    //Serial.print(F("# userCmdl: "));
     //Serial.println(userCmdl);
     userRctl |= RCTL_ATTN;
   }
@@ -2363,7 +2367,7 @@ void userSvce() {
   wrapPubl( echoTops, userCmdl.c_str(), sizeof(userCmdl)); 
 #endif  
   if ( bbrdRctl & RCTL_ARTI ) {
-    // Artisan CHAN command 
+    // Artisan Mode only cmds 
     if ((userCmdl[0] == 'C') && (userCmdl[1] == 'H') && (userCmdl[2] == 'A')) {
       //  'chan' command, respond '#'
       Serial.println(F("#"));
@@ -2381,23 +2385,24 @@ void userSvce() {
       bbrdRctl &= ~RCTL_ARTI; 
       Serial.println(F("# Serial  <=> Console"));
     }
-    if ((userCmdl[0] == '0') && (userCmdl[1] == 'T') && (userCmdl[2] == '1')) {
-      // Cmd : IO3 
-      userAOT1 = (userCmdl.substring(4)).toInt();
-      if (userAOT1 > 99) userAOT1 = 100;
-      userDuty = userAOT1;
-      //
-      dtostrf( userAOT1, 8, 3, mqttVals);
-      wrapPubl( (const char * )AOT1Tops , (const char * )mqttVals, sizeof(mqttVals) ); 
-    }
-    if ((userCmdl[0] == '0') && (userCmdl[1] == 'T') && (userCmdl[2] == '2')) {
-      // Cmd : IO3 
-      userAOT2 = (userCmdl.substring(4)).toInt();
-      if (userAOT2 > 99) userAOT2 = 100;
-            //
-      dtostrf( userAOT2, 8, 3, mqttVals);
-      wrapPubl( (const char * )AOT2Tops , (const char * )mqttVals, sizeof(mqttVals) ); 
-
+    if ((userCmdl[0] == '0') && (userCmdl[1] == 'T')) {
+      if (userCmdl[2] == '1') {
+        // Cmd : OT1 
+        userAOT1 = (userCmdl.substring(4)).toInt();
+        if (userAOT1 > 99) userAOT1 = 100;
+        userDuty = userAOT1;
+        //
+        dtostrf( userAOT1, 8, 3, mqttVals);
+        wrapPubl( (const char * )AOT1Tops , (const char * )mqttVals, sizeof(mqttVals) );
+      }   
+      if (userCmdl[2] == '2') {
+        // Cmd : OT2 
+        userAOT2 = (userCmdl.substring(4)).toInt();
+        if (userAOT2 > 99) userAOT2 = 100;
+              //
+        dtostrf( userAOT2, 8, 3, mqttVals);
+        wrapPubl( (const char * )AOT2Tops , (const char * )mqttVals, sizeof(mqttVals) );
+      }  
     }
     if ((userCmdl[0] == 'P') && (userCmdl[1] == 'I') && (userCmdl[2] == 'D')) {
       if ((userCmdl[3] == ';') && (userCmdl[4] == 'T')) {
@@ -2452,13 +2457,14 @@ void userSvce() {
       //Serial.println(artiResp);
     }
     //  'unit' command, set user scale 
-    if ((userCmdl[0] == 'U') && (userCmdl[1] == 'N') && (userCmdl[5] == 'C')) {
+    if ((userCmdl[0] == 'U') && (userCmdl[1] == 'N') && (userCmdl[6] == 'C')) {
       userScal = centScal;
     }  
-    if ((userCmdl[0] == 'U') && (userCmdl[1] == 'N') && (userCmdl[5] == 'F')) {
+    if ((userCmdl[0] == 'U') && (userCmdl[1] == 'N') && (userCmdl[6] == 'F')) {
       userScal = fahrScal;
     }
   }  
+  // Artisan mode or Normal Mode cmds 
   //  a/A Toggle Artisan format serial interface
   if ((userCmdl[0] == 'A') || (userCmdl[0] == 'a')) {
     // Toggle Artisan Interface
@@ -2601,8 +2607,12 @@ void userSvce() {
       vTmpDegC = float(ambiTmpC) + (vChgGrms / ( vChgGrms + tempIntB )) * ( vTmpDegC - float(ambiTmpC));
     }
     vChgGrms = tempIntB;
-    Serial.print(F("# New Chg gram: "));
-    Serial.println(vChgGrms);
+    if (0) {
+      Serial.print(F("# New vChgGrms: "));
+      Serial.print(vChgGrms);
+      Serial.print(F("  vTmpDegC: "));
+      Serial.println(vTmpDegC);
+    }  
   }
   if (userCmdl[0] == 'm'){
     // TBD stored profile from memory 
@@ -2695,8 +2705,8 @@ void userSvce() {
       Serial.print(F("# Manu userDuty: "));
       Serial.println(userDuty);
     }  
-    //Serial.print("# New PWM: ");
-    //Serial.println(userDuty);
+    //    Serial.print("# New PWM: ");
+    //    Serial.println(userDuty);
     if ( userDuty == 0) {
       // Power off: Sense ambient ( fan htr pwr), temp setpt to meas ambient
       targTmpC = ambiTmpC;
@@ -2710,13 +2720,13 @@ void userSvce() {
     // manual pwm will apply in pwmd loop; unset manual ramp ctrl 
     rampCdpm = 0;
   }
-  // X  put pid Xb term 
   if ((userCmdl[0] == 'x') || (userCmdl[0] == 'X')) {
+    // X  put pid Xb term 
     pidcXBias = (userCmdl.substring(1)).toFloat();
     pidcInfo();
   }
-  // Y  put pid Yb term 
   if ((userCmdl[0] == 'Y') || (userCmdl[0] == 'Y')) {
+    // Y  put pid Yb term 
     pidcYBias = (userCmdl.substring(1)).toFloat();
     pidcInfo();
   }
@@ -2729,17 +2739,16 @@ void userSvce() {
     totlSecs = 0;
     stepSecs = 0;                   // User command: reset step timer 
   }
-  // For debug to see if Artisan is setting Unit C/F 
   if ((userCmdl[0] == '?')) {
+    // For debug to see if Artisan is setting Unit C/F 
     if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
       Serial.println(userScal);
     }  
   }
-//  clean out cmdLine 
-  for ( tempIntA = 0; tempIntA < sizeof(userCmdl); tempIntA++ ) {
+  //  clean out cmdLine 
+  for ( tempIntA = 0; tempIntA < (sizeof(userCmdl)); tempIntA++ ) {
     userCmdl[tempIntA] = ' ';
   }  
-  //userCmdl = "";
 }
 
 /// Arduino Setup 
@@ -2747,6 +2756,7 @@ void userSvce() {
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
+  //Serial.setTimeout(100);
   delay(100);
   eprmInit();
   rotsInit();
@@ -2794,7 +2804,7 @@ void setup() {
       USE_SERIAL.printf("[SETUP] BOOT WAIT %d...\n", t);
       USE_SERIAL.flush();
     }    
-    delay(1000);
+    delay(100);
     }
     if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
       Serial.println(F("# WMul : add upbd AP  (local IP: ) "));
@@ -2823,7 +2833,7 @@ void setup() {
       if ( (bbrdRctl & RCTL_ARTI) == 0) {
         Serial.print(F("!"));
       }  
-      delay(1000);
+      delay(100);
     }  
     if ( !( bbrdRctl & RCTL_ARTI ))  {
       Serial.println(F("# WiFi connected as local IP:"));
@@ -2906,5 +2916,5 @@ void loop() {
 #endif  // WIFI_SOKS
 #endif  // PROC_ESP && WITH_WIFI
   //frntLoop();
-  // Why   delay(10);
+  // Why     delay(10);
 }
