@@ -308,7 +308,6 @@ __asm volatile ("nop");
 #include <LiquidCrystal_I2C.h>
 LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  // Set the LCD I2C address
 #endif 
-#endif 
 
 //  MAX31855 thermocouple 
 #if WITH_MAX31855
