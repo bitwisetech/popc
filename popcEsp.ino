@@ -372,9 +372,9 @@ char userScal   = 'C';
 
 //
 String fromSeri;
-String     userCmdl("                                        "); // 39Chrs + null
+String     userCmdl("                                                 "); // 49Chrs + null
 // below is incompatible with MQQQTT topic handling 
-//char   userCmdl[] = "                                        "; // 39Chrs + null
+//char   userCmdl[] = "                                                 "; // 49Chrs + null
 char   userChrs[] = "023.0,128.8,138.8,000.0,000.0           ";  // 40sp 39 + nullch 
 
 #if IFAC_FRNT
@@ -2301,7 +2301,7 @@ void userLoop() {
     // read all the available characters
     // Dc14 
     userCmdl = Serial.readStringUntil('\n');
-    userCmdl[sizeof(userCmdl)-1] = '\0';
+    //userCmdl[sizeof(userCmdl)-1] = '\0';
     //Serial.print(F("# userCmdl: "));
     //Serial.println(userCmdl);
     userRctl |= RCTL_ATTN;
@@ -2324,6 +2324,11 @@ void userSvce() {
     // Artisan Mode only cmds 
     if ((userCmdl[0] == 'C') && (userCmdl[1] == 'H') && (userCmdl[2] == 'A')) {
       //  'chan' command, respond '#'
+      Serial.println(F("#"));
+    }  
+    if ((userCmdl[0] == 'F') && (userCmdl[1] == 'I') && (userCmdl[2] == 'L') && (userCmdl[3] == 'T')) {
+      //  'FILT' command, set filter coefficients: just send Ack
+      // Send ack response 
       Serial.println(F("#"));
     }  
     if ((userCmdl[0] == 'I') && (userCmdl[1] == 'O') && (userCmdl[2] == '3')) {
@@ -2414,13 +2419,17 @@ void userSvce() {
       Serial.println(F(""));
       //Serial.println(artiResp);
     }
-    //  'unit' command, set user scale 
-    if ((userCmdl[0] == 'U') && (userCmdl[1] == 'N') && (userCmdl[6] == 'C')) {
+    if ((userCmdl[0] == 'U') && (userCmdl[1] == 'N') && (userCmdl[2] == 'I') && (userCmdl[3] == 'T')) {
+      //  'units' command, set user temperature scale 
+      if (userCmdl[6] == 'C') {
       userScal = centScal;
-    }  
-    if ((userCmdl[0] == 'U') && (userCmdl[1] == 'N') && (userCmdl[6] == 'F')) {
+      }
+      if (userCmdl[6] == 'F') {
       userScal = fahrScal;
-    }
+      }
+      // Send ack response 
+      Serial.println(F("#"));
+    }  
   }  
   // Artisan mode or Normal Mode cmds 
   //  a/A Toggle Artisan format serial interface
@@ -2841,11 +2850,11 @@ void setup() {
 void loop() {
   // put your main code here, to run repeatedly:
   pidcLoop();
+  userLoop();
+  pwmdLoop();
   if (userRctl & RCTL_ATTN) {
     userSvce();
   }  
-  pwmdLoop();
-  profLoop();
   rotsLoop();
 #if WITH_MAX31855
   tcplRealLoop();
@@ -2853,10 +2862,10 @@ void loop() {
   virtTcplLoop();
 #endif
   millLoop();
+  profLoop();
 #if WITH_LCD
   lcdsLoop();
 #endif 
-  userLoop();
   //
   if (cb10Rctl & RCTL_ATTN) {
     cb10Svce();
