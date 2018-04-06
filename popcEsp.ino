@@ -7,7 +7,7 @@
 //  lcds  support for I2C 2x16 LCD display                             
 //  mill  fast ~1mSec sequencer inc A/D, Off-On, modulo variable freq/pwmd
 //  mqtt  ref ingo MQTT message queuing publish / subscribe protocol for control via PC MQTT client  
-//  offn  On-Off <= mains cycle/2 rate cycle PSW for SSR control (eg heater
+//  offn  On-Off <= mains cycle/2 rate cycle PSW for SSR control (eg heater )
 //  pidc  PID controller for PWM powered temperature control; a delta-time summing anti windup PID 
 //  pwmd  8-bit PWM control via freq >= ~30Hz hardware pwm pins 
 //  prof  Profile control; selects auto/manual temp setpt, manual pwm width, real/fake temp sensor
@@ -18,14 +18,20 @@
 //    
 //  Command - Response supported for Artisan interface:
 //                 ** 'CHA' cmd causes auto-switch into Artisan speak            
-//  CHAN      #    Acknowlege command, no action **
+//  CHA(N)    #    Acknowlege channel setup command, no action, respond '#' **
+//  FILT      #    Acknowlege filter parms  command, no action, respond '#'
 //  IO3 nn         Set duty cycle to nn <= 100    
-//  OT1 nn         Set duty cycle to nn <= 100    
-//  OT2 nn         Set duty cycle to nn <= 100    
-//  REA            Send Artisan formatted response line
-//  UNC            Set units to Centigrade 
-//  UNF            Set units to Fahrenheit
-//  PID SV nnn     Set new target setpoint temp to nnn
+//  OT1 nn         (Set duty cycle #1 to nn <= 100), no action, respond '#'
+//  OT2 nn         (Set duty cycle #2 to nn <= 100), no action, respond '#'
+//  PID;OFF        Reset PID, set PWM <= 0, set ROC <= 0, set PID Runs <= 0 
+//  PID;RESET      Reset PID, zero all internal PID computations, run status unchanged
+//  PID;SV nnn     Set new target setpoint temp to nnn
+//  PID;SYNC       Zero all internal PID computations, set target temp to sensed temp
+//  PID;T;pp,ii,dd Set new PID prop, Integral, Differential gain values              
+//  POPC           Exit Artisan Mode, PopC <=> Serial  
+//  REA(D)         Send Artisan formatted response line
+//  UNIT;C         Set units to Centigrade 
+//  UNIT;F         Set units to Fahrenheit
 //                 ** 'CHA' cmd causes auto-switch into Artisan speak            
 // 
 //  Command & LCD Indicators; Upcase: User Set; LowCase: Auto/Sensed/Readback value 
@@ -97,8 +103,12 @@
 #define PROC_UNO      0                  // Compile for Arduino Uno
 #define NEWP_UNO      0                  // Uno new pins layout
 #define PROC_ESP      1                  // Compile for ESP8266
-#define WITH_LCD      1                  // Hdwre has I2C 2x16 LCD display
-#define WITH_MAX31855 0                  // Hdwre has thermocouple + circuit
+#define WITH_LCD      1                  // Hdwre has I2C 2x16 LCD display of either type
+#define WITH_LCD_TYPA 1                  // LCD display type: http://www.yourduino.com/sunshop/index.php?l=product_detail&p=170
+#define WITH_LCD_TYPB 0                  // LCD display type: using https://github.com/marcoschwartz/LiquidCrystal_I2C
+#define WITH_MAX6675  0                  // Hdwre has MAX6675  thermocouple + circuit
+#define WITH_MAX31855 0                  // Hdwre has MAX31855 thermocouple + circuit
+#define WITH_VIRTTCPL 1                  // No hdwre, simulate virtual thermocouple output
 #define WITH_PCF8574  0                  // Hdwre has I2C I/O Extender      
 #define WITH_OFFN     0                  // Use ~250cy via mill Off-On SSR, not fast h/w PWM
 #define WITH_WIFI     0                  // Compile for Wifi MQTT clientF
@@ -304,15 +314,20 @@ __asm volatile ("nop");
 #include <Wire.h>  // Comes with Arduino IDE
 
 // LCD: I2C 2x16                                      
-// Pin A4 Pin A5 i2c
+// UNO: Analog Pin A4 SDA Pin A5 SCL  I2C  ESP: GPIO Pin D4 SDA  GPIO Pin D5 SCL 
 // set LCD address to 0x27 for a A0-A1-A2  display
 //   args: (addr, en,rw,rs,d4,d5,d6,d7,bl,blpol)
 #if WITH_LCD
 #include <LiquidCrystal_I2C.h>
+#if WITH_LCD_TYPA
 LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  // Set the LCD I2C address
 #endif 
+#if WITH_LCD_TYPB
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+#endif 
+#endif  // any LCD type installed  
 
-//  MAX31855 thermocouple 
+//  MAX31855 Thermocouple 
 #if WITH_MAX31855
 #if PROC_UNO
 #include "Adafruit_MAX31855.h"
@@ -323,6 +338,12 @@ Adafruit_MAX31855 tcpl(TCPL_CLCK, TCPL_CSEL, TCPL_MISO);
 MAX31855 tcpl(TCPL_CLCK, TCPL_CSEL, TCPL_MISO);
 #endif  //  ESP
 #endif  //  MAX31855
+
+// MAX6675 Thermocouple
+#if WITH_MAX6675
+#include <max6675.h>
+MAX6675 tcpl(TCPL_CLCK, TCPL_CSEL, TCPL_MISO);
+#endif  //  MAX6675
 
 // PCF8574 I2C I/O extender 
 #if WITH_PCF8574
@@ -475,7 +496,7 @@ float pidcPn, pidcIn, pidcDn       = 0.0; // per sample P-I-D-Err Terms
 float pidcPc, pidcIc, pidcDc       = 0.0; // cumulative P-I-D components 
 float pidcUn = 0.0;                       // PID controller Output
 // 
-const char versChrs[] = "2018Mar18-pidcRctl";
+const char versChrs[] = "2018Apr06-MAX6675-Suppt";
 /// wip: stored profiles
 // profiles
 //   stored as profiles 1-9 with steps 0-9 in each 
@@ -499,7 +520,7 @@ profTplt profStep( int prof ) {
 }
 
 // pwmd vbls
-int  pwmdFreq, pwmdDuty, pwmdTarg, pwmdOutp;                          // Freq, Duty Cycle Target (255max) Output
+int  pwmdFreq, pwmdDuty, pwmdTarg, pwmdOutp, pwmdFlag;                // Freq, Duty Cycle Target (255max) Output
 int vHtrWatt = 1500;
 int vChgGrms = 250;
 int vTmpMaxC = 260;
@@ -981,6 +1002,10 @@ void frntLoop() {
 void lcdsInit() {
   bbrdTmde = bbrdSetp;
   lcd.begin(16, 2);
+#if WITH_LCD_TYPB
+lcd.init();
+lcd.backlight();
+#endif  
   lcd.home ();
   lcd.print(F("<== PopC-PID ==>"));
   lcd.setCursor ( 0, 1 );
@@ -1456,6 +1481,58 @@ void millLoop() {
 //         Tf = alpha * Td , where alpha usually is set to 0.1
 ///
 
+// For PID debug change below to #if 1 and un-comment in bbrdFilll()
+#if 0
+void pidcDbug() {
+  //
+  dbugLine[6]   = 'r';
+  dtostrf( (pidcRn  ), 6, 2, &dbugLine[7] );
+  dbugLine[13]  = ' ';
+  //
+  dbugLine[14]  = 'y';
+  dtostrf( (pidcYn  ), 6, 2, &dbugLine[15] );
+  dbugLine[21]  = ' ';
+  //
+  dbugLine[22]  = 'e';
+  dtostrf( (pidcEn  ), 6, 2, &dbugLine[23] );
+  dbugLine[29]  = ' ';
+  //
+  dbugLine[30]  = 'o';
+  dtostrf( (pidcUn  ), 6, 2, &dbugLine[31] );
+  dbugLine[37]  = ' ';
+  //
+  dbugLine[38]  = 'K';
+  dtostrf( (pidcKp  ), 6, 2, &dbugLine[39] );
+  dbugLine[45]  = ' ';
+  //
+  dbugLine[46]  = 'S';
+  dtostrf( (pidcTi  ), 6, 2, &dbugLine[47] );
+  dbugLine[53]  = ' ';
+  //
+  dbugLine[54]  = 'V';
+  dtostrf( (pidcTd  ), 6, 2, &dbugLine[55] );
+  dbugLine[61]  = ' ';
+  //
+  dbugLine[62]  = 'P';
+  dtostrf( (pidcPc  ), 6, 2, &dbugLine[63] );
+  dbugLine[69]  = ' ';
+  //
+  dbugLine[70]  = 'I';
+  dtostrf( (pidcIc  ), 6, 2, &dbugLine[71] );
+  dbugLine[77]  = ' ';
+  //
+  dbugLine[78]  = 'D';
+  dtostrf( (pidcDc  ), 6, 2, &dbugLine[79] );
+  dbugLine[85]  = ' ';
+  //
+  for ( tempIntA = 0; tempIntA < 64; tempIntA++ ) {
+    if (( bbrdRctl & RCTL_ARTI ) == 0) {
+      Serial.write(dbugLine[tempIntA]);
+    }  
+  } 
+}
+#endif
+
 // Retrieve updated parms from eprom 
 void pidcFprm() {
   EEPROM.get( EADX_KP, fromEprm);
@@ -1521,22 +1598,8 @@ void pidcFprm() {
     pidcYBias = fromEprm; 
   }  
 }
-void pidcInit() {
-  float fromEprm;
-  Tf = pidcAlpha * pidcTd;
-  Epn1 = 0.0;
-  Edfn2 = Edfn1 = Edfn = 0;
-  // get 
-#if PROC_UNO
-  pidcFprm();
-#endif  
-  // first time being enabled, seed with current property tree value
-  Un1 = Un = 0;
-  pidcMark =  millis() + PIDC_POLL_MSEC;
-  targTmpC = int(ambiTmpC);
-}
 
-//
+// Serial logout of PID internal values 
 void pidcInfo() {
   Serial.print(F("# PIDC   Kp:"));
   Serial.print(pidcKp);
@@ -1555,7 +1618,24 @@ void pidcInfo() {
   Serial.print(F(" Yb:"));
   Serial.println(pidcYBias);
 }  
-//
+
+// Initialise at processor boot setup; pulls gains from Eprom and overwrites compiled values
+void pidcInit() {
+  float fromEprm;
+  Tf = pidcAlpha * pidcTd;
+  Epn1 = 0.0;
+  Edfn2 = Edfn1 = Edfn = 0;
+  // get 
+#if PROC_UNO
+  pidcFprm();
+#endif  
+  // first time being enabled, seed with current property tree value
+  Un1 = Un = 0;
+  pidcMark =  millis() + PIDC_POLL_MSEC;
+  targTmpC = int(ambiTmpC);
+}
+
+// PID runtime iteration 
 void pidcLoop() {
   if ( millis() < pidcMark ) return; else {
     pidcMark += PIDC_POLL_MSEC;  
@@ -1641,7 +1721,7 @@ void pidcLoop() {
       }  
       pidcUn = Un;
       // Updates indexed values;
-      Un1   = Un;
+      Un1   = Un = dUn = 0;
       Epn1  = Epn;
       Edfn2 = Edfn1;
       Edfn1 = Edfn;
@@ -1649,56 +1729,25 @@ void pidcLoop() {
   }    
 }
 
-void pidcDbug() {
-  //
-  dbugLine[6]   = 'r';
-  dtostrf( (pidcRn  ), 6, 2, &dbugLine[7] );
-  dbugLine[13]  = ' ';
-  //
-  dbugLine[14]  = 'y';
-  dtostrf( (pidcYn  ), 6, 2, &dbugLine[15] );
-  dbugLine[21]  = ' ';
-  //
-  dbugLine[22]  = 'e';
-  dtostrf( (pidcEn  ), 6, 2, &dbugLine[23] );
-  dbugLine[29]  = ' ';
-  //
-  dbugLine[30]  = 'o';
-  dtostrf( (pidcUn  ), 6, 2, &dbugLine[31] );
-  dbugLine[37]  = ' ';
-  //
-  dbugLine[38]  = 'K';
-  dtostrf( (pidcKp  ), 6, 2, &dbugLine[39] );
-  dbugLine[45]  = ' ';
-  //
-  dbugLine[46]  = 'S';
-  dtostrf( (pidcTi  ), 6, 2, &dbugLine[47] );
-  dbugLine[53]  = ' ';
-  //
-  dbugLine[54]  = 'V';
-  dtostrf( (pidcTd  ), 6, 2, &dbugLine[55] );
-  dbugLine[61]  = ' ';
-  //
-  #if 0
-  dbugLine[62]  = 'P';
-  dtostrf( (pidcPc  ), 6, 2, &dbugLine[63] );
-  dbugLine[69]  = ' ';
-  //
-  dbugLine[70]  = 'I';
-  dtostrf( (pidcIc  ), 6, 2, &dbugLine[71] );
-  dbugLine[77]  = ' ';
-  //
-  dbugLine[78]  = 'D';
-  dtostrf( (pidcDc  ), 6, 2, &dbugLine[79] );
-  dbugLine[85]  = ' ';
-  #endif
-  //
-  for ( tempIntA = 0; tempIntA < 64; tempIntA++ ) {
-    if (( bbrdRctl & RCTL_ARTI ) == 0) {
-      Serial.write(dbugLine[tempIntA]);
-    }  
-  } 
+void pidcRset() {
+  // PID live reset: Zero P, I, D terms  Setpoint <= Ambient 
+  // tbd: Should PID run after reset ? 
+  Edfn2  = Edfn1 = Edfn    = 0;
+  pidcEn = Epn1 = Epn      = 0;
+  pidcBn                   = 0;
+  pidcPn = pidcIn = pidcDn = 0;
+  pidcPc = pidcIc = pidcDc = 0;
+  pidcUn = Un   = Un1      = 0;
+  pidcRn = pidcYn          = ambiTmpC;
 }
+
+void pidcSync() {
+  // PID live reset, Zero internals then setpoint <= input <= sensed tcpl temp
+  //   PID is not stopped, use this function to e.g clear large error after charge event
+  pidcRset();
+  pidcRn = pidcYn          = sensTmpC;
+}
+
 
 /// Profile Control Sequence
 //    None selected                     : skip to sequencer end
@@ -1804,7 +1853,6 @@ void profLoop() {
     //
     if (( bbrdRctl & RCTL_ARTI ) == 0) {
       if ( bbrdRctl & RCTL_INFO ) {
-//
         // Send billboard 'Info' on serial 
         for ( tempIntA = 0; tempIntA < 16; tempIntA++ ) {
           Serial.write(bbrdLin0[tempIntA]);
@@ -1813,17 +1861,15 @@ void profLoop() {
         for ( tempIntA = 0; tempIntA < 16; tempIntA++ ) {
           Serial.write(bbrdLin1[tempIntA]);
         }
+        // For PID debug Un-comment and set #if 1 at pidcDbug() 
         //if ((bbrdRctl & RCTL_DIAG) == RCTL_DIAG) {  
           //pidcDbug();
         //}  
         Serial.println(F(" "));
         // Rotswitch 
-        //Serial.print(F("# Rots: "));
-        //Serial.print(rotsValu());
-        //Serial.print(F("    ");
-        //Serial.print(F("tcplRctl: "));
-        //Serial.print(tcplRctl);
-        //Serial.print(F("    "));
+        //Serial.print(F("# Rots: ")); Serial.print(rotsValu());
+        //Serial.print(F("    ");      Serial.print(F("tcplRctl: "));
+        //Serial.print(tcplRctl);      Serial.print(F("    "));
         // Front End
       } else {
         // If bbrd flagged send Artisan csv logging serial 
@@ -1924,11 +1970,12 @@ void pwmdInit() {
   pwmdDuty = 0;
   pinMode( PWMD_OPIN, PWMD_MODE);
 #if PROC_ESP
-  #define PWMRANGE 255
-  analogWriteRange(255);
+  //#define PWMRANGE 254
+  //analogWriteRange(uint(254));
 #endif  
   pwmdSetF( PWMD_FREQ);			
   pwmdMark =  millis() + PWMD_POLL_MSEC;
+  pwmdFlag = 0;
 }
 
 void pwmdLoop() {
@@ -1954,9 +2001,21 @@ void pwmdLoop() {
       if ( pwmdRctl & RCTL_AUTO) {
         pwmdTarg = byte(pidcUn);
       }
-      pwmdOutp = byte (pwmdTarg + 0.5);
+      pwmdOutp = byte(pwmdTarg + 0.5);
       pwmdPcnt = byte ((100.0 * pwmdOutp / 255) +0.5);
+#if PROC_ESP
+      if ( pwmdFlag ) {
+        pwmdOutp *= 4; 
+        Serial.print(F("# pwO"));
+        Serial.println(int(pwmdOutp));
+        pwmdFlag = 0;
+        delay(10);
+        analogWrite( PWMD_OPIN, int(pwmdOutp));
+      }  
+#endif      
+#if PROC_UNO
       analogWrite( PWMD_OPIN, pwmdOutp);
+#endif      
     }  
   }  
 }
@@ -1971,14 +2030,6 @@ int rotsValu() {
   if ( digitalRead(ROTS_BIT2) == LOW  ) resp += 4; 
   if ( digitalRead(ROTS_BIT1) == LOW  ) resp += 2; 
   if ( digitalRead(ROTS_BIT0) == LOW  ) resp += 1; 
-  //Serial.print(F("# B3:"));
-  //Serial.print(digitalRead(ROTS_BIT3));
-  //Serial.print(F(" B2:"));
-  //Serial.print(digitalRead(ROTS_BIT2));
-  //Serial.print(F(" B1:"));
-  //Serial.print(digitalRead(ROTS_BIT1));
-  //Serial.print(F(" B0:"));
-  //Serial.print(digitalRead(ROTS_BIT0));
 #endif
 #if WITH_PCF8574
   tVal = (~(twioRead8()) & TWIO_IMSK) ; 
@@ -2110,10 +2161,12 @@ void tcplInit() {
   sensTmpC = ambiTmpC;
 }
 
-#if WITH_MAX31855
+// Thermocouple 
+//   MAX6675 lib has low funtion, same as UNO-MAX31855 library; ESP-MAX31855 has more function  
+#if ( WITH_MAX31855 || WITH_MAX6675) 
 void tcplRealLoop() {
   double tcplTmpC;
-  byte tResp = 0;
+  byte tResp = 0;            // preload response with non-error code
   if ( millis() < tcplMark) return; else {
     tcplMark += TCPL_POLL_MSEC;
     //
@@ -2122,37 +2175,33 @@ void tcplRealLoop() {
       sensTmpC = ambiTmpC;
     } else {
       // Read thermocouple 
-#if PROC_UNO
+#if (PROC_UNO || WITH_MAX6675)
       tcplTmpC = tcpl.readCelsius();
 #endif
-#if PROC_ESP
+#if ( PROC_ESP && WITH_MAX31855 ) 
       // read() gets both status and temp 
       tResp    = tcpl.read();
-      if ( 0 ) {
-      // block tcpl diags if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-        Serial.print(F("# tcpl Stat:"));
-        Serial.print(tcpl.getStatus());
-        Serial.print(F(" Fctr:"));
-        Serial.print(tcpl.getTCfactor());
-        Serial.print(F(" Ofst:"));
-        Serial.print(tcpl.getOffset());
-        Serial.print(F(" ITmp:"));
-        Serial.print(tcpl.getInternal());
-        Serial.print(F(" TdegC:"));
-        Serial.println(tcpl.getTemperature());
+      if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+        // tcpl diags 
+        Serial.print(F("# tcpl Stat:"));  Serial.print(tcpl.getStatus());
+        Serial.print(F(" Fctr:"));        Serial.print(tcpl.getTCfactor());
+        Serial.print(F(" Ofst:"));        Serial.print(tcpl.getOffset());
+        Serial.print(F(" ITmp:"));        Serial.print(tcpl.getInternal());
+        Serial.print(F(" TdegC:"));       Serial.println(tcpl.getTemperature());
       }  
       // getTemperature returns internal variable from read()
       tcplTmpC = tcpl.getTemperature();
 #endif
-      // Error  condition ESP:tResp <> 0   UNO: isNan Temperature  
-#if PROC_UNO
+      // Error  condition ESP:tResp <> 0   (UNO | MAX6675): isNan Temperature  
       if (isnan(tcplTmpC)) {
         // Bad reading: use avges 
         sensTmpC = float( prevTmpC / 2.00 + degCHist[0] / 4.00 + degCHist[1] / 4.00 ); 
+#if (PROC_UNO && WITH_MAX31855)
         tResp = tcpl.readError();
-      }
 #endif       
+      }
       if ( tResp != 0 ) {
+        // tResp, extended status available only for ESP-MAX31855 
 #if WITH_LCD
         lcd.clear();
         lcd.home ();
@@ -2160,7 +2209,7 @@ void tcplRealLoop() {
         lcd.setCursor ( 0, 1 );
 #endif
         if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-          Serial.print(F("# Sense: "));
+          Serial.print(F("# tcpl sense: "));
         }  
         switch ( tResp ) {
           case 0:
@@ -2210,16 +2259,15 @@ void tcplRealLoop() {
 #endif
         // Bad reading: use avges 
         sensTmpC = float( prevTmpC / 2.00 + degCHist[0] / 4.00 + degCHist[1] / 4.00 ); 
-      } else {
-        // update sensed temp with valid reading 
+      }  // End tResp != 0 extended status 
+      else {
+        // Valid reading: update sensed temp
         sensTmpC = float( tcplTmpC); 
       }  
-      // get temp even if error 
-      //sensTmpC = float( tcplTmpC); 
-    }  
-  }  
-}  
-#endif // WITH_MAX31855
+    }   // End tcplRctl != 0  
+  }  //End tcpl poll time
+}  // End tcplLoop 
+#endif // (WITH_MAX31855 || WITH_MAX6675)
 
 ///
 // virtual tcpl for debug 
@@ -2340,12 +2388,6 @@ void userLoop() {
         // Send ack response 
         Serial.println(F("#io3"));
       }
-      if (  ((userCmdl[0] == 'N') && (userCmdl[1] == 'O') && (userCmdl[2] == 'R') && (userCmdl[3] == 'M'))  \
-         || ((userCmdl[0] == 'n') && (userCmdl[1] == 'o') && (userCmdl[2] == 'r') && (userCmdl[3] == 'm'))  ) {
-        // Cmd : Escape autoArti 
-        bbrdRctl &= ~RCTL_ARTI; 
-        Serial.println(F("# Serial  <=> Console"));
-      }
       if ((userCmdl[0] == '0') && (userCmdl[1] == 'T')) {
         if (userCmdl[2] == '1') {
           // Cmd : OT1 
@@ -2371,6 +2413,23 @@ void userLoop() {
       }
       if (  ((userCmdl[0] == 'P') && (userCmdl[1] == 'I') && (userCmdl[2] == 'D')) \ 
          || ((userCmdl[0] == 'p') && (userCmdl[1] == 'i') && (userCmdl[2] == 'd')) ) {
+         // Artisan <=> TC4 PID;xxxx commands 
+         if (  ((userCmdl[4] == 'O') && (userCmdl[5] == 'F') && (userCmdl[6] == 'F')) \
+            || ((userCmdl[4] == 'o') && (userCmdl[5] == 'f') && (userCmdl[6] == 'f')) ) {
+           // Artisan <=> TC4 PID;OFF command: PWM, PID Run Ctrl Off,  PID reset internals
+           pidcRset();                      // Switch off PID Rctl after this in case pidcRset() doesn't 
+           bbrdTmde = bbrdManu;
+           pidcRctl &= ~RCTL_AUTO;
+           pwmdRctl &= ~RCTL_AUTO;
+           pwmdRctl |=  RCTL_MANU;
+           rampCdpm = 0;
+           userDuty = 0; 
+        }
+        if (  ((userCmdl[4] == 'R') && (userCmdl[5] == 'E') && (userCmdl[6] == 'S')) \
+           || ((userCmdl[4] == 'r') && (userCmdl[5] == 'e') && (userCmdl[6] == 's')) ) {
+           // Artisan <=> TC4 PID;RESET command: PID reset internals Setpoint <= Ambient
+           pidcRset();
+        }
         if ((userCmdl[4] == 'S') && (userCmdl[5] == 'V')) {
           // set desired temperatre degC
           userDegs = (userCmdl.substring(7)).toInt();
@@ -2389,6 +2448,11 @@ void userLoop() {
           // Send ack response 
           Serial.println(F("#psv"));
         }  
+        if (  ((userCmdl[4] == 'S') && (userCmdl[5] == 'Y') && (userCmdl[6] == 'N')) \
+           || ((userCmdl[4] == 's') && (userCmdl[5] == 'y') && (userCmdl[6] == 'n')) ) {
+           // Artisan <=> TC4 PID;SYNC  command: PID reset internals Setpoint <= sensTmpC
+           pidcSync();
+        }
         if ((userCmdl[3] == ';') && (userCmdl[4] == 'T')) {
           // PID;T;Kp;Ki;Kd tuning values
           tempIntA = userCmdl.indexOf( ';' , 6);              // find second ';'
@@ -2419,6 +2483,12 @@ void userLoop() {
           Serial.println(F("#ptu"));
         }
       }
+      if (  ((userCmdl[0] == 'P') && (userCmdl[1] == 'O') && (userCmdl[2] == 'P') && (userCmdl[3] == 'C'))  \
+         || ((userCmdl[0] == 'p') && (userCmdl[1] == 'o') && (userCmdl[2] == 'p') && (userCmdl[3] == 'c'))  ) {
+        // Cmd : Escape autoArti respond as popC
+        bbrdRctl &= ~RCTL_ARTI; 
+        Serial.println(F("# PopC Speak"));
+      }
       if (  ((userCmdl[0] == 'R') && (userCmdl[1] == 'E') && (userCmdl[2] == 'A')) \
          || ((userCmdl[0] == 'r') && (userCmdl[1] == 'e') && (userCmdl[2] == 'a'))  ) {
         //
@@ -2432,10 +2502,10 @@ void userLoop() {
       }
       if ((userCmdl[0] == 'U') && (userCmdl[1] == 'N') && (userCmdl[2] == 'I') && (userCmdl[3] == 'T')) {
         //  'units' command, set user temperature scale 
-        if (userCmdl[6] == 'C') {
+        if (userCmdl[5] == 'C') {
         userScal = centScal;
         }
-        if (userCmdl[6] == 'F') {
+        if (userCmdl[5] == 'F') {
         userScal = fahrScal;
         }
         // Send ack response 
@@ -2678,34 +2748,32 @@ void userLoop() {
       }  
     }
     if ((userCmdl[0] == 'W') || (userCmdl[0] == 'w')) {
-      Serial.println(F("#x"));
       // set new pwmD Width, run control flag to indicate manual override
-      tempIntA =  userCmdl.indexOf('\0');
-        userDuty = (userCmdl.substring(1)).toInt();
-        Serial.print  (F("#y"));
+      userDuty = (userCmdl.substring(1)).toInt();
+      //Serial.print  (F("#y"));
+      //Serial.println(userDuty);
+      if (userDuty > 99) userDuty = 100;
+      if ((bbrdRctl & RCTL_DIAG) == RCTL_DIAG) {  
+        Serial.print(F("# Manu userDuty: "));
         Serial.println(userDuty);
-        if (userDuty > 99) userDuty = 100;
-        if ((bbrdRctl & RCTL_DIAG) == RCTL_DIAG) {  
-          Serial.print(F("# Manu userDuty: "));
-          Serial.println(userDuty);
-        }  
-        //    Serial.print("# New PWM: ");
-        //    Serial.println(userDuty);
-        if ( userDuty == 0) {
-          // Power off: Sense ambient ( fan htr pwr), temp setpt to meas ambient
-          targTmpC = ambiTmpC;
-        } else {
-          stepSecs = 0;                   // User command: reset step timer 
-        }
-        bbrdTmde = bbrdManu;
-        pidcRctl &= ~RCTL_AUTO;
-        pwmdRctl &= ~RCTL_AUTO;
-        pwmdRctl |=  RCTL_MANU;
-        // manual pwm will apply in pwmd loop; unset manual ramp ctrl 
-        rampCdpm = 0;
-        // Send ack response 
-        Serial.println(F("#w"));
-      //} // End find \n in userCmdl  
+      }  
+      //    Serial.print("# New PWM: ");
+      //    Serial.println(userDuty);
+      if ( userDuty == 0) {
+        // Power off: Sense ambient ( fan htr pwr), temp setpt to meas ambient
+        targTmpC = ambiTmpC;
+      } else {
+        stepSecs = 0;                   // User command: reset step timer 
+      }
+      bbrdTmde = bbrdManu;
+      pidcRctl &= ~RCTL_AUTO;
+      pwmdRctl &= ~RCTL_AUTO;
+      pwmdRctl |=  RCTL_MANU;
+      // manual pwm will apply in pwmd loop; unset manual ramp ctrl 
+      rampCdpm = 0;
+      pwmdFlag = 1;
+      // Send ack response 
+      Serial.println(F("#w"));
     }
     if ((userCmdl[0] == 'x') || (userCmdl[0] == 'X')) {
       // X  put pid Xb term 
@@ -2738,6 +2806,7 @@ void userLoop() {
     //}  
     // Drop Attn flag immediately so not masked during process
     userRctl &= ~RCTL_ATTN;
+    //Serial.println(F("#z"));
   }
   // End single command parsing   
 }
