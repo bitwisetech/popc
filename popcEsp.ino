@@ -699,7 +699,8 @@ void  bbrdArti() {
     dtostrf( floatCtoF(ambiTmpC), 5, 1,  &artiResp[0]  );               // Art's Ta Ch
     dtostrf( floatCtoF(targTmpC), 5, 1,  &artiResp[6]  );               // ET
     dtostrf( floatCtoF(sensTmpC), 5, 1, &artiResp[12] );                // BT
-    dtostrf( int(sensCdpm * 9.00 / 5.00 + 335 ), 5, 1, &artiResp[18] ); // CDpm CDpm + 150deg to oeffset on Artisan plot
+    dtostrf( int(sensCdpm * 9.00 / 5.00 + 0 ), 5, 1, &artiResp[18] );   // CDpm CDpm + no offset
+    //dtostrf( int(sensCdpm * 9.00 / 5.00 + 335 ), 5, 1, &artiResp[18] ); // CDpm CDpm + offset for centered Artisan plot
     // MQTT response fields
     dtostrf( floatCtoF(targTmpC), 5, 1,  &artiProg[0]  );               // Art's Ta Ch
     dtostrf( floatCtoF(sensTmpC), 5, 1,  &artiProg[6]  );               // ET
@@ -708,7 +709,8 @@ void  bbrdArti() {
     dtostrf(           ambiTmpC,  5, 1, &artiResp[0]  );                // AT
     dtostrf(           targTmpC,  5, 1, &artiResp[6]  );                // ET
     dtostrf(           sensTmpC,  5, 1, &artiResp[12] );                // BT
-    dtostrf( int(sensCdpm + 130 ), 5, 1, &artiResp[18] );               // CDpm + 150deg to oeffset on Artisan plot
+    dtostrf( int(sensCdpm + 0 ), 5, 1, &artiResp[18] );                 // CDpm + no offset 
+    //dtostrf( int(sensCdpm + 130 ), 5, 1, &artiResp[18] );               // CDpm + offset for centered Artisan plot
     dtostrf(           targTmpC,  5, 1, &artiProg[0]  );                // ET
     dtostrf(           sensTmpC,  5, 1, &artiProg[6] );                 // BT
     dtostrf( int(sensCdpm      ), 5, 1, &artiProg[12] );                // CDpm
@@ -1721,7 +1723,7 @@ void pidcLoop() {
       }  
       pidcUn = Un;
       // Updates indexed values;
-      Un1   = Un = dUn = 0;
+      Un1   = Un;
       Epn1  = Epn;
       Edfn2 = Edfn1;
       Edfn1 = Edfn;
@@ -2009,8 +2011,8 @@ void pwmdLoop() {
         Serial.print(F("# pwO"));
         Serial.println(int(pwmdOutp));
         pwmdFlag = 0;
-        delay(10);
-        analogWrite( PWMD_OPIN, int(pwmdOutp));
+        //delay(10);
+        //analogWrite( PWMD_OPIN, int(pwmdOutp));
       }  
 #endif      
 #if PROC_UNO
@@ -2722,8 +2724,10 @@ void userLoop() {
         targTmpC = userDegs;
       }
       if (targTmpC > maxiTmpC) targTmpC = maxiTmpC;
+      holdTmpC = targTmpC;
       rampCdpm = userDgpm = 0;          // Setting target temp implies no ramp 
       stepSecs = 0;                     // User command: reset step timer 
+      pidcRctl |=  RCTL_RUNS;
       pidcRctl |=  RCTL_AUTO;
       pwmdRctl &= ~RCTL_MANU;
       pwmdRctl |=  RCTL_AUTO;
