@@ -40,7 +40,7 @@
 //  CHAN    (Auto from Artisan) Set Artisan speak
 //  c/C     Set centigrade units; LCD display actual/target temp
 //  d/D     toggle diagnostic verbose messages on serial 
-//  e/E     Readback / Update EEPROM PID parameters 
+//  e/E     Readback / Update From/To EEPROM PID parameters 
 //  f/F     Set fahrenheit units; LCD display actual/target temp
 //  Gff     Set PID Gamma parameter (Float; Expert only ! )  
 //  h/H     Set hold temperature setpoint fore ramp endpoint ( soak temp )
@@ -49,8 +49,7 @@
 //  Kff     Set PID Gain TComp  (Float Kappa: 0 == no Temp comp)
 //  l/L     Send Artisan CSV format on serial ( for capture and Artisan Import )  
 //  m/M     Rsvd MQTT msg / Set bean Mass for virtual tcpl  
-//  NORM    Break serial out of Artisan speak
-//  n/N     Rsvd NetSock + 
+//  n/N     Rsvd NetSock  /  
 //  o       Off~/On PID run 
 //  p/Pff   Readback / Set PID P-Term gain (Float Kp: lower value == lower  gain)
 //  q/Q     Query Readback PIDC operating (not eeprom) parameters / Q tbd
@@ -58,7 +57,7 @@
 //  snn/Snn Set immediate target setPoint C/F temperature  
 //  t/T     Spare
 //  u/U     Set PWM Frequency Hz (TBD)  
-//  v/V     Readback firmware version, PID, EEPROM parms to serial 
+//  v/V     Readback Version, PID, EEPROM to serial / EPROM => PID Values
 //  wnn/Wnn Set PWM Duty Cycle nn <= 100, disable PID
 //  x/X     Rdbk/Write PID XVal: Steady temp with   0% pwm 
 //  y/Y     Rdbk/Write PID YVal: Steady temp with 100% pwm 
@@ -877,7 +876,8 @@ void bbrdFill() {
 void eprmInit() {
 #if PROC_ESP
   // ESP8266 has no .length function 
-  eprmSize = 1024;
+  eprmSize = 512;
+  EEPROM.begin(eprmSize);
 #else  
   eprmSize = EEPROM.length();
 #endif  
@@ -885,12 +885,10 @@ void eprmInit() {
 }
 
 void eprmInfo() {
-    Serial.print(F("EEPROM Size: "));
-    Serial.print(eprmSize);
-    Serial.print(F(" Free: "));
-    Serial.println(eprmFree);
+    Serial.print(F("# EEPROM Size: ")); Serial.print(eprmSize);
+    Serial.print(F(" Free: "));         Serial.println(eprmFree);
     EEPROM.get(EADX_KP, fromEprm);
-    Serial.print(F("EEPROM Kp:"));
+    Serial.print(F("# EEPROM Kp:"));
     Serial.print(fromEprm);
     EEPROM.get(EADX_TI, fromEprm);
     Serial.print(F(" Ti:"));
@@ -2677,7 +2675,8 @@ void userLoop() {
       pidcRctl ^= RCTL_RUNS;
     }
     // P  put pid Kp term 
-    if (((userCmdl[0] == 'p') || (userCmdl[0] == 'P')) && (userCmdl[1] != 'I')) {
+    if (((userCmdl[0] == 'p') || (userCmdl[0] == 'P')) && \
+         (userCmdl[1] != 'I') && (userCmdl[1] != 'i') && (userCmdl[1] != 'O') && (userCmdl[1] != 'o')) {
       pidcKp = (userCmdl.substring(1)).toFloat();
       pidcInfo();
     }
@@ -2743,7 +2742,11 @@ void userLoop() {
         Serial.println(pwmdFreq);
       }  
     }
-    if ((userCmdl[0] == 'V') || (userCmdl[0] == 'v')) {
+    if (userCmdl[0] == 'V') {
+      // New PID Values from Eprom => PID 
+      pidcFprm();
+    }
+    if (userCmdl[0] == 'v') {
       // Version string e if Artisan is setting Unit C/F 
       if  (!( bbrdRctl & RCTL_ARTI )) {
         Serial.println(versChrs);
