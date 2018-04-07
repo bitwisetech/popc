@@ -2589,7 +2589,7 @@ void userLoop() {
       }  
       EEPROM.get(EADX_CT, fromEprm);
       if ( pidcPoll    != int(fromEprm)) {
-        EEPROM.put( EADX_TD, float(pidcPoll));
+        EEPROM.put( EADX_CT, float(pidcPoll));
       }  
       EEPROM.get(EADX_BE, fromEprm);
       if ( pidcBeta  != fromEprm ) {
