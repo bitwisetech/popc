@@ -99,9 +99,9 @@
 //               Copy from /.arduino15/packages/esp8266/hardware/esp8266/2.3.0/libraries/Ticker/Ticker.h
 //
 //  Code compiler switches: 1/0 Enab/Dsel UNO-ESP proc HW, Wifi options - Rebuild, Upload after changing these 
-#define PROC_UNO      0                  // Compile for Arduino Uno
-#define NEWP_UNO      0                  // Uno new pins layout
-#define PROC_ESP      1                  // Compile for ESP8266
+#define PROC_UNO      1                  // Compile for Arduino Uno
+#define NEWP_UNO      1                  // Uno new pins layout
+#define PROC_ESP      0                  // Compile for ESP8266
 #define WITH_LCD      1                  // Hdwre has I2C 2x16 LCD display of either type
 #define WITH_LCD_TYPA 1                  // LCD display type: http://www.yourduino.com/sunshop/index.php?l=product_detail&p=170
 #define WITH_LCD_TYPB 0                  // LCD display type: using https://github.com/marcoschwartz/LiquidCrystal_I2C
@@ -471,7 +471,7 @@ const char KappaTops[] = "/popc/pidc/Kappa";
 //
 //
 float pidcKp    =   3.000;                // P-Term gain
-float pidcKc    =   3.000;                // P-Term gain
+float pidcKc    =   3.000;                // P-Term gain compensated for setpoint above ambient
 float pidcTi    =   2.000;                // I-Term Gain sec ( Ti++ = Gain--)
 float pidcTd    =   8.000;                // D-Term Gain sec ( Td++ = Gain++)
 //
@@ -583,12 +583,9 @@ byte profNmbr, stepNmbr, profChar, stepChar;    // Numeric Profile No, Step No, 
 byte rotsCurr, rotsNewb, offnOutp;   // Current value, newb test for change; off/on cycle counter, output 
 
 //  time markers compared with uS mS and mill count 
-unsigned long adc0Mark, adc0Poll                               = 0UL;
+unsigned long adc0Mark, adc0Poll, pidcPoll                     = 0UL;
 unsigned long lcdsMark, millStep, millMark, pidcElap, pidcMark = 0UL;
 unsigned long profMark, pwmdMark, rotsMark, tcplMark, vtcpMark = 0UL;
-//unsigned long lcdsMark, pidcMark, profMark = 0UL;
-//unsigned long pwmdMark, rotsMark, tcplMark = 0UL;
-//unsigned long vtcpMark, millMark, millStep = 0UL;
 //
 
 #if ( PROC_ESP && WITH_WIFI)
@@ -1143,8 +1140,8 @@ void dataCbck(String& topic, String& data) {
     //
     userCmdl = String(data);
     //strncpy(userChrs, data.c_str(), sizeof(userChrs));
-    //data.getBytes((byte[])userCmdl, sizeof(userCmdl));
-    //for ( tempIntA = 0; tempIntA < sizeof(userCmdl); tempIntA++ ) {
+    //data.getBytes((byte[])userCmdl, userCmdl.length());
+    //for ( tempIntA = 0; tempIntA < userCmdl.length(); tempIntA++ ) {
     //  userCmdl[tempIntA] = data.charAt(tempIntA) ;
     //  if (data.charAt(tempIntA) == '\0') {break;}
     //}  
@@ -1627,18 +1624,19 @@ void pidcInit() {
   Edfn2 = Edfn1 = Edfn = 0;
   // get 
 #if PROC_UNO
-  pidcFprm();
+  // pidcFprm();
 #endif  
   // first time being enabled, seed with current property tree value
   Un1 = Un = 0;
-  pidcMark =  millis() + PIDC_POLL_MSEC;
+  pidcPoll = PIDC_POLL_MSEC;
+  pidcMark =  millis() + pidcPoll;
   targTmpC = int(ambiTmpC);
 }
 
 // PID runtime iteration 
 void pidcLoop() {
   if ( millis() < pidcMark ) return; else {
-    pidcMark += PIDC_POLL_MSEC;  
+    pidcMark += pidcPoll;  
     //
     if ( (pidcRctl & RCTL_RUNS)  == 0 ) {
       // Poll/Thermocouple == 0 Shutdown
@@ -1648,7 +1646,7 @@ void pidcLoop() {
       Un = pidcUn = pidcRn = pidcYn = 0.00;
     } else {
       // 
-      Ts = (PIDC_POLL_MSEC / 1000.0); // sample interval (Sec)
+      Ts = (pidcPoll / 1000.0); // sample interval (Sec)
       // 
       if (!isnan(targTmpC)) pidcRn = (float)targTmpC;
       if (!isnan(sensTmpC)) pidcYn = (float)sensTmpC;
@@ -2353,7 +2351,7 @@ void userLoop() {
     delay(100);
     // read from buffer until first linefeed, remaining chars staay in hdwre serial buffer 
     userCmdl = Serial.readStringUntil('\n');
-    //userCmdl[sizeof(userCmdl)-1] = '\0';
+    //userCmdl[userCmdl.length()-1] = '\0';
     //Serial.print(F("# userCmdl: "));
     //Serial.println(userCmdl);
     userRctl |= RCTL_ATTN;
@@ -2365,7 +2363,7 @@ void userLoop() {
     }  
 #if WIFI_MQTT
     // echo back network originated commands 
-    wrapPubl( echoTops, userCmdl.c_str(), sizeof(userCmdl)); 
+    wrapPubl( echoTops, userCmdl.c_str(), userCmdl.length()); 
 #endif  
     if ( bbrdRctl & RCTL_ARTI ) {
       // Artisan Mode only cmds 
@@ -2425,6 +2423,18 @@ void userLoop() {
            rampCdpm = 0;
            userDuty = 0; 
         }
+        if (  ((userCmdl[4] == 'C') && (userCmdl[5] == 'T')) \
+           || ((userCmdl[4] == 'c') && (userCmdl[5] == 't')) ) {
+          // Artisan <=> TC4 PID;CT;mSec command: PID <= New Cycle Time mSec
+          // Start ack response 
+          Serial.print(F("#pct "));
+          tempFltA  = (userCmdl.substring(7)).toFloat();
+          if (!isnan(tempFltA)) {
+            pidcPoll = tempFltA;
+            Serial.print(F("PID mSec poll: ")); Serial.print(pidcPoll);
+          }
+          Serial.println(F(""));
+        }
         if (  ((userCmdl[4] == 'R') && (userCmdl[5] == 'E') && (userCmdl[6] == 'S')) \
            || ((userCmdl[4] == 'r') && (userCmdl[5] == 'e') && (userCmdl[6] == 's')) ) {
            // Artisan <=> TC4 PID;RESET command: PID reset internals Setpoint <= Ambient
@@ -2455,33 +2465,28 @@ void userLoop() {
         }
         if ((userCmdl[3] == ';') && (userCmdl[4] == 'T')) {
           // PID;T;Kp;Ki;Kd tuning values
-          tempIntA = userCmdl.indexOf( ';' , 6);              // find second ';'
-          if (tempIntA < sizeof( userCmdl)) { 
+          tempIntA = userCmdl.indexOf( ';' , 6);              // find third ';'
+          if (int(tempIntA) < userCmdl.length()) { 
             pidcKp = (userCmdl.substring(6, tempIntA)).toFloat();
           }  
-          tempIntB = userCmdl.indexOf( ';' , tempIntA);       // find third  ';'
-          if (tempIntB < sizeof( userCmdl)) { 
+          tempIntB = userCmdl.indexOf( ';' , (tempIntA + 1));       // find fourth ';'
+          if (tempIntB < userCmdl.length()) { 
             // Artisan's Ki converted to Ti by taking reciprocal 
-            tempFltA = (userCmdl.substring(tempIntA, tempIntB)).toFloat();
+            tempFltA = (userCmdl.substring((tempIntA + 1), tempIntB)).toFloat();
             if ( tempFltA <= 0.00 ) {
               pidcTi = 99999.99; 
             } else {
               pidcTi = ( 1.00 / tempFltA);
             }  
           }  
-          tempIntA = userCmdl.indexOf( ';' , tempIntB);       // find fourth ';'
-          if (tempIntB < sizeof( userCmdl)) { 
-            pidcTd = (userCmdl.substring(tempIntB, tempIntA)).toFloat();
-          }
-          if ( (!( bbrdRctl & RCTL_ARTI )) && ( bbrdRctl & RCTL_DIAG) ) {
-            Serial.print(F("# New PID Kp, Ti, Kd: "));
-            Serial.print(   pidcKp);
-            Serial.print(   pidcTi);
-            Serial.println( pidcTd);
-          }  
+          tempFltA  = (userCmdl.substring(tempIntB +1)).toFloat();
+          if (!isnan(tempFltA)) pidcTd = tempFltA;
           // Send ack response 
-          Serial.println(F("#ptu"));
-        }
+          Serial.print(F("#ptu new Kp, Ti, Kd: "));
+          Serial.print(   pidcKp); Serial.print(F(", "));
+          Serial.print(   pidcTi); Serial.print(F(", "));
+          Serial.println( pidcTd);
+        }  
       }
       if (  ((userCmdl[0] == 'P') && (userCmdl[1] == 'O') && (userCmdl[2] == 'P') && (userCmdl[3] == 'C'))  \
          || ((userCmdl[0] == 'p') && (userCmdl[1] == 'o') && (userCmdl[2] == 'p') && (userCmdl[3] == 'c'))  ) {
@@ -2808,7 +2813,7 @@ void userLoop() {
       }  
     }
     //  clean out cmdLine 
-    //for ( tempIntA = 0; tempIntA < (sizeof(userCmdl)); tempIntA++ ) {
+    //for ( tempIntA = 0; tempIntA < (userCmdl.length()); tempIntA++ ) {
     //  userCmdl[tempIntA] = ' ';
     //}  
     // Drop Attn flag immediately so not masked during process
