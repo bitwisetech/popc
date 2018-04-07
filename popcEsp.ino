@@ -3,7 +3,6 @@
 //  Sections (units) in this code, ordered alphabetically:
 //  bbrd  'billboard' posts info to either / both of 2x16 LCD display / Serial Port
 //  eprm  EEPROM setup and handling 
-//  frnt  deprecated, sends data over Serial to Frontside / Process apps on PC for PID tuning   
 //  lcds  support for I2C 2x16 LCD display                             
 //  mill  fast ~1mSec sequencer inc A/D, Off-On, modulo variable freq/pwmd
 //  mqtt  ref ingo MQTT message queuing publish / subscribe protocol for control via PC MQTT client  
@@ -84,10 +83,9 @@
 //  nano: Ser:0,1  ExtInt:2 PWM:9,10(490HzTmr1) 3,11(490HzTmr2) PWM:5,6 (980HzTmr0 + mS, delay)
 //        SPI:10,11,12,13 I2C SDA:A4 SCL:A5 LED:13
 //
-// 
 /// Compiling this sketch
 //    for UNO
-//      Set '1' compile-time switches, below:  PROC_UNO, NEWP_UNO ( set unused switches to '0')
+//      Set '1' compile-time switches, below:  PROC_UNO, ( set unused switches to '0')
 //    for ESP8266   
 //      Setup your Arduino IDE for ESP8266, see www.adafruit.com and install board support package
 //      Get the ESP TickerScheduler package, copy TickerScheduler.* into the same folder as this sketch, not into library folder.
@@ -99,9 +97,9 @@
 //               Copy from /.arduino15/packages/esp8266/hardware/esp8266/2.3.0/libraries/Ticker/Ticker.h
 //
 //  Code compiler switches: 1/0 Enab/Dsel UNO-ESP proc HW, Wifi options - Rebuild, Upload after changing these 
-#define PROC_UNO      1                  // Compile for Arduino Uno
-#define NEWP_UNO      1                  // Uno new pins layout
-#define PROC_ESP      0                  // Compile for ESP8266
+#define PROC_UNO      0                  // Compile for Arduino Uno
+#define PROC_ESP      1                  // Compile for ESP8266
+#define IFAC_ARTI     1                  // Start with Artisan interface on Serial
 #define WITH_LCD      1                  // Hdwre has I2C 2x16 LCD display of either type
 #define WITH_LCD_TYPA 1                  // LCD display type: http://www.yourduino.com/sunshop/index.php?l=product_detail&p=170
 #define WITH_LCD_TYPB 0                  // LCD display type: using https://github.com/marcoschwartz/LiquidCrystal_I2C
@@ -114,12 +112,9 @@
 #define WIFI_MQTT     0                  // Compile for Wifi MQTT clientF
 #define WIFI_SOKS     0                  // Compile for Wifi Web Sckt Srvr
 #define WIFI_WMAN     0                  // Compile for Wifi Manager
-#define IFAC_ARTI     1                  // Start with Artisan interface on Serial
-#define IFAC_FRNT     0                  // Obsolete Front/Process interface on Serial 
 ///
 // UNO pin assignments
 #if PROC_UNO
-#if NEWP_UNO
 // Off/On SSR driver 
 #define OFFN_OPIN  2
 // Onboard Led indicates duty cycle
@@ -135,7 +130,7 @@
 #define ROTS_BIT2 10                        // Pin Val 4 
 #define ROTS_BIT1 11                        // Pin Val 2 
 #define ROTS_BIT0 12                        // Pin Val 1 
-// spi2 on NEWP_ for alternative tcpl interface  (excludes twio)
+// spi2 on UNO for alternative tcpl interface  (excludes twio)
 #define SPI2_CLCK  3                        // Pin Clock
 #define SPI2_MISO  5                        // ( Pin D4 used TCPL
 #define SPI2_CSEL  2                        // Pin CSel
@@ -150,31 +145,6 @@
 //
 #define SCOP_OPIN  2     // debug flag nixes SPI2_CSEL
 ///
-#else    // NOT NEWP_UNO
-//
-// Off/On SSR driver 
-#define OFFN_OPIN  5
-// Onboard Led indicates duty cycle
-#define ONBD_OPIN LED_BUILTIN
-#define ONBD_LOWON  0         
-// PWM Drive
-// d9 needed by RFI scan  d6 would use tmr0 want d3 used by max13855
-#define PWMD_OPIN  9                        // Pin D9
-#define PWMD_MODE  OUTPUT
-#define PWMD_FREQ  123                      // UNO: timer counter range
-// Rotary 16way encoder switch; D13 is LED on UNO 
-#define ROTS_BIT3  6                        // Pin Val 8 
-#define ROTS_BIT2 10                        // Pin Val 4 
-#define ROTS_BIT1 11                        // Pin Val 2 
-#define ROTS_BIT0 12                        // Pin Val 1 
-// spi on uno FOR tcpl
-#define TCPL_CLCK  4                        // Pin Clock
-#define TCPL_MISO  7                        // Pin Data
-#define TCPL_CSEL  8                        // Pin CSel
-//
-//
-#define SCOP_OPIN   2    // debug flag is +OnBrdLed
-#endif   // !NEWP_UNO
 #endif   // PROC_UNO
 
 ///
@@ -383,10 +353,10 @@ const char csvlLin2[] = "Time1	Time2	BT	ET	Event	SV	DUTY";
 // billboard string for LCD + Serial  Lower cases: computed/measured Upper case: User/Setpoints 
 char bbrdLin0[] = "w100% r-123 128c"; 
 char bbrdLin1[] = "P0-0 S12.3m 228C";
-char bbrdHold   = 'H';                      // Prefix to decimal mins alternating with total time
-char bbrdManu   = 'M';
-char bbrdRamp   = 'R';
-char bbrdSetp   = 'S';
+#define bbrdHold  'H'                       // Prefix to decimal mins alternating with total time
+#define bbrdManu  'M' 
+#define bbrdRamp  'R'
+#define bbrdSetp  'S'
 char bbrdTmde;
 char dbugLine[] = " <==>                                                                           ";
 char centScal   = 'C';
@@ -399,18 +369,6 @@ String     userCmdl("                                                 "); // 49C
 // below is incompatible with MQQQTT topic handling 
 //char   userCmdl[] = "                                                 "; // 49Chrs + null
 char   userChrs[] = "023.0,128.8,138.8,000.0,000.0           ";  // 40sp 39 + nullch 
-
-#if IFAC_FRNT
-// FRNT
-union {                // This Data structure lets
-  byte asBytes[24];    // us take the byte array
-  float asFloat[6];    // sent from processing and
-}                      // easily convert it to a
-frntComm;              // float array
-byte Auto_Man = -1;
-byte Direct_Reverse = -1;
-unsigned long frntPoll; //this will help us know when to talk with processing
-#endif
 
 //eprm
 float fromEprm;
@@ -914,90 +872,6 @@ void eprmInfo() {
     Serial.print(F(" Yb:"));
     Serial.println(fromEprm);
 }
-
-///  Front Side Serial Interface to PC 'Processing' graphing app
-//
-#if IFAC_FRNT
-void frntRecv() {
-  // read the bytes sent from Processing
-  int index=0;
-  while( (Serial.available()) && (index<26))
-  {
-    if(index==0) {
-      Auto_Man = Serial.read();
-    } else if (index==1) {
-      Direct_Reverse = Serial.read();
-    } else {
-      frntComm.asBytes[index-2] = Serial.read();
-      //Serial.print(F(# "\nIndx:"));
-      //Serial.g(index);
-      //Serial.print(frntComm.asBytes[index]);
-      //Serial.print(F("    "));
-    }  
-    index++;
-  } 
-  
-  // if the information we got was in the correct format, 
-  // read it into the system
-  if( (index==26)  && (Auto_Man==0 || Auto_Man==1)&& (Direct_Reverse==0 || Direct_Reverse==1))
-  {
-    targTmpC=float(frntComm.asFloat[0]);
-    //sensTmpC=double(frntComm.asFloat[1]); // * the user has the ability to send the 
-                                            //   value of "Input"  in most cases (as 
-                                            //   in this one) this is not needed.
-    if(Auto_Man==0)                         // * only change the output if we are in 
-    {                                       //   manual mode.  otherwise we'll get an
-      pidcUn=double(frntComm.asFloat[2]);      //   output blip, then the controller will 
-    }                                       //   overwrite.
-    
-    double p, i, d;                         // * read in and set the controller tunings
-    pidcKp = double(frntComm.asFloat[3]);
-    pidcTi = double(frntComm.asFloat[4]);
-    pidcTd = double(frntComm.asFloat[5]);
-    //myPID.SetTunings(p, i, d);            //
-    
-    //if(Auto_Man==0) myPID.SetMode(MANUAL);// * set the controller mode
-    //else myPID.SetMode(AUTOMATIC);        //
-    
-    //if(Direct_Reverse==0) myPID.SetControllerDirection(DIRECT); // * set controller Direction
-    //else myPID.SetControllerDirection(REVERSE);
-  }
-  Serial.flush();                           // * clear any random data from the serial buffer
-}
-
-void frntSend() {
-  Serial.print(F("PID "));
-  Serial.print(targTmpC);   
-  Serial.print(F(" "));
-  Serial.print(sensTmpC);   
-  Serial.print(F(" "));
-  Serial.print(pidcUn);   
-  Serial.print(F(" "));
-  Serial.print(pidcKp);   
-  Serial.print(F(" "));
-  Serial.print(pidcTd);   
-  Serial.print(F(" "));
-  Serial.print(pidcTd);   
-  Serial.print(F(" "));
-  //if(myPID.GetMode()==AUTOMATIC) Serial.print(F("Auto"));
-  if(Auto_Man==1) Serial.print(F("Auto"));
-  else Serial.print(F("Manu"));  
-  Serial.print(F(" "));
-  //if(myPID.GetDirection()==DIRECT) Serial.println(F("Drct"));
-  if(Direct_Reverse==1) Serial.println(F("Drct"));
-  else Serial.println(F("Rvse"));
-}
-
-void frntLoop() {
-  if(millis()>frntPoll)
-  {
-    frntRecv();
-    frntSend();
-    frntPoll += 500;
-  }
-}
-#endif  // IFAC_FRNT
-
 
 #if WITH_LCD
 /// LCD DISPLAY
@@ -1752,8 +1626,26 @@ void pidcRset() {
   pidcPc = pidcIc = pidcDc = 0;
   pidcUn = Un   = Un1      = 0;
   pidcRn = pidcYn          = ambiTmpC;
+  bbrdTmde = bbrdManu;
 }
 
+void pidcStrt(){
+  // PID ON | START 
+  pidcRctl |=  RCTL_RUNS;
+  pidcRctl |=  RCTL_AUTO;
+  pwmdRctl &= ~RCTL_MANU;
+  pwmdRctl |=  RCTL_AUTO;
+  bbrdTmde  =  bbrdSetp;
+}
+
+void pidcStop() {
+  bbrdTmde = bbrdManu;
+  pidcRctl &= ~RCTL_AUTO;
+  pwmdRctl &= ~RCTL_AUTO;
+  pwmdRctl |=  RCTL_MANU;
+  rampCdpm = 0;
+  userDuty = 0; 
+}
 void pidcSync() {
   // PID live reset, Zero internals then setpoint <= input <= sensed tcpl temp
   //   PID is not stopped, use this function to e.g clear large error after charge event
@@ -2377,33 +2269,35 @@ void userLoop() {
       Serial.println(userCmdl);
     }  
 #if WIFI_MQTT
-    // echo back network originated commands 
+    // echo back network originated cmds 
     wrapPubl( echoTops, userCmdl.c_str(), userCmdl.length()); 
 #endif  
     if ( bbrdRctl & RCTL_ARTI ) {
       // Artisan Mode only cmds 
+      //  CHA(N);S1S2S3S4 cmd: Assign inputs ID into message sequence Sx; Resp '#' ack
       if ((userCmdl[0] == 'C') && (userCmdl[1] == 'H') && (userCmdl[2] == 'A')) {
         // Send ack response 
-        Serial.println(F("#chn"));
+        Serial.println(F("# CHAN"));
       }  
+      //  FILT;L1;L2;L3;L4 cmd: Assign digital filter lever Lx to Input n; Resp '#' ack
       if ((userCmdl[0] == 'F') && (userCmdl[1] == 'I') && (userCmdl[2] == 'L') && (userCmdl[3] == 'T')) {
-        //  'FILT' command, set filter coefficients: just send Ack
         // Send ack response 
-        Serial.println(F("#flt"));
+        Serial.println(F("# FILT"));
       }  
+      //  IO3 cmd
       if ((userCmdl[0] == 'I') && (userCmdl[1] == 'O') && (userCmdl[2] == '3')) {
-        // Cmd : IO3 
         userAIO3 = (userCmdl.substring(4)).toInt();
         if (userAIO3 > 99) userAIO3 = 100;
         //
         dtostrf( userDuty, 8, 3, mqttVals);
         wrapPubl( (const char * )AIO3Tops , (const char * )mqttVals, sizeof(mqttVals) ); 
         // Send ack response 
-        Serial.println(F("#io3"));
+        Serial.println(F("# IO3"));
       }
+      //  OTn cmds 
       if ((userCmdl[0] == '0') && (userCmdl[1] == 'T')) {
+        Serial.print(F("# OT"));
         if (userCmdl[2] == '1') {
-          // Cmd : OT1 
           userAOT1 = (userCmdl.substring(4)).toInt();
           if (userAOT1 > 99) userAOT1 = 100;
           userDuty = userAOT1;
@@ -2411,38 +2305,27 @@ void userLoop() {
           dtostrf( userAOT1, 8, 3, mqttVals);
           wrapPubl( (const char * )AOT1Tops , (const char * )mqttVals, sizeof(mqttVals) );
           // Send ack response 
-          Serial.println(F("#ot1"));
+          Serial.println(F("1"));
         }   
         if (userCmdl[2] == '2') {
-          // Cmd : OT2 
           userAOT2 = (userCmdl.substring(4)).toInt();
           if (userAOT2 > 99) userAOT2 = 100;
                 //
           dtostrf( userAOT2, 8, 3, mqttVals);
           wrapPubl( (const char * )AOT2Tops , (const char * )mqttVals, sizeof(mqttVals) );
           // Send ack response 
-          Serial.println(F("#ot2"));
+          Serial.println(F("#2"));
         }  
       }
+      //  PIDxxxx cmds
       if (  ((userCmdl[0] == 'P') && (userCmdl[1] == 'I') && (userCmdl[2] == 'D')) \ 
          || ((userCmdl[0] == 'p') && (userCmdl[1] == 'i') && (userCmdl[2] == 'd')) ) {
-         // Artisan <=> TC4 PID;xxxx commands 
-         if (  ((userCmdl[4] == 'O') && (userCmdl[5] == 'F') && (userCmdl[6] == 'F')) \
-            || ((userCmdl[4] == 'o') && (userCmdl[5] == 'f') && (userCmdl[6] == 'f')) ) {
-           // Artisan <=> TC4 PID;OFF command: PWM, PID Run Ctrl Off,  PID reset internals
-           pidcRset();                      // Switch off PID Rctl after this in case pidcRset() doesn't 
-           bbrdTmde = bbrdManu;
-           pidcRctl &= ~RCTL_AUTO;
-           pwmdRctl &= ~RCTL_AUTO;
-           pwmdRctl |=  RCTL_MANU;
-           rampCdpm = 0;
-           userDuty = 0; 
-        }
+        Serial.print(F("# PID "));
+        // PID;CT;mSec cmd: PID <= New Cycle Time mSec
         if (  ((userCmdl[4] == 'C') && (userCmdl[5] == 'T')) \
            || ((userCmdl[4] == 'c') && (userCmdl[5] == 't')) ) {
-          // Artisan <=> TC4 PID;CT;mSec command: PID <= New Cycle Time mSec
           // Start ack response 
-          Serial.print(F("#pct "));
+          Serial.print(F("CT: "));
           tempFltA  = (userCmdl.substring(7)).toFloat();
           if (!isnan(tempFltA)) {
             pidcPoll = tempFltA;
@@ -2450,11 +2333,37 @@ void userLoop() {
           }
           Serial.println(F(""));
         }
+        // PID;OFF cmd: PID <= Stop PID running, zero outputs 
+        if (  ((userCmdl[4] == 'O') && (userCmdl[5] == 'F') && (userCmdl[6] == 'F')) \
+           || ((userCmdl[4] == 'o') && (userCmdl[5] == 'f') && (userCmdl[6] == 'f')) ) {
+          // Artisan <=> TC4 PID;OFF cmd: PWM, PID Run Ctrl Off,  PID reset internals
+          pidcRset();                      // Switch off PID Rctl after this in case pidcRset() doesn't 
+          pidcStop();
+          Serial.println(F("OFF"));
+        }
+        // PID;OFN cmd: PID <= Set PID run control & auto
+        if (  ((userCmdl[4] == 'O') && (userCmdl[5] == 'N')) \
+           || ((userCmdl[4] == 'o') && (userCmdl[5] == 'n')) ) {
+           pidcStrt();
+           Serial.println(F("ON"));
+        }  
+        // 
         if (  ((userCmdl[4] == 'R') && (userCmdl[5] == 'E') && (userCmdl[6] == 'S')) \
            || ((userCmdl[4] == 'r') && (userCmdl[5] == 'e') && (userCmdl[6] == 's')) ) {
-           // Artisan <=> TC4 PID;RESET command: PID reset internals Setpoint <= Ambient
+           // Artisan <=> TC4 PID;RESET cmd: PID reset internals Setpoint <= Ambient
            pidcRset();
+           Serial.println(F("RESET"));
         }
+        if (  ((userCmdl[4] == 'S') && (userCmdl[5] == 'T') && (userCmdl[6] == 'A')) \
+           || ((userCmdl[4] == 's') && (userCmdl[5] == 't') && (userCmdl[6] == 'a')) ) {
+           pidcStrt();
+           Serial.println(F("START"));
+        }  
+        if (  ((userCmdl[4] == 'S') && (userCmdl[5] == 'T') && (userCmdl[6] == 'O')) \
+           || ((userCmdl[4] == 's') && (userCmdl[5] == 't') && (userCmdl[6] == 'o')) ) {
+           pidcStop();
+           Serial.println(F("STOP"));
+        }  
         if ((userCmdl[4] == 'S') && (userCmdl[5] == 'V')) {
           // set desired temperatre degC
           userDegs = (userCmdl.substring(7)).toInt();
@@ -2466,17 +2375,19 @@ void userLoop() {
           if (targTmpC > maxiTmpC) targTmpC = maxiTmpC;
           holdTmpC = targTmpC;
           rampCdpm = userDgpm = 0;          // Setting target temp implies no ramp 
-          stepSecs = 0;                     // User command: reset step timer 
+          stepSecs = 0;                     // User cmd: reset step timer 
           pidcRctl |=  RCTL_AUTO;
           pwmdRctl &= ~RCTL_MANU;
           pwmdRctl |=  RCTL_AUTO;
           // Send ack response 
-          Serial.println(F("#psv"));
+          Serial.print  (F("SV: "));
+          Serial.println("userDegs");
         }  
         if (  ((userCmdl[4] == 'S') && (userCmdl[5] == 'Y') && (userCmdl[6] == 'N')) \
            || ((userCmdl[4] == 's') && (userCmdl[5] == 'y') && (userCmdl[6] == 'n')) ) {
-           // Artisan <=> TC4 PID;SYNC  command: PID reset internals Setpoint <= sensTmpC
+           // Artisan <=> TC4 PID;SYNC  cmd: PID reset internals Setpoint <= sensTmpC
            pidcSync();
+           Serial.println(F("SYNC"));
         }
         if ((userCmdl[3] == ';') && (userCmdl[4] == 'T')) {
           // PID;T;Kp;Ki;Kd tuning values
@@ -2497,7 +2408,7 @@ void userLoop() {
           tempFltA  = (userCmdl.substring(tempIntB +1)).toFloat();
           if (!isnan(tempFltA)) pidcTd = tempFltA;
           // Send ack response 
-          Serial.print(F("#ptu new Kp, Ti, Kd: "));
+          Serial.print(F("T sets new Kp, Ti, Kd: "));
           Serial.print(   pidcKp); Serial.print(F(", "));
           Serial.print(   pidcTi); Serial.print(F(", "));
           Serial.println( pidcTd);
@@ -2521,7 +2432,7 @@ void userLoop() {
         // Serial.println(F("#rea"));
       }
       if ((userCmdl[0] == 'U') && (userCmdl[1] == 'N') && (userCmdl[2] == 'I') && (userCmdl[3] == 'T')) {
-        //  'units' command, set user temperature scale 
+        //  'units' cmd, set user temperature scale 
         if (userCmdl[5] == 'C') {
         userScal = centScal;
         }
@@ -2549,10 +2460,10 @@ void userLoop() {
       pidcBeta = (userCmdl.substring(1)).toFloat();
       pidcInfo();
     }
-    // Artisan CHAN command For reset flip to Artisan mode   
+    // Artisan CHAN cmd For reset flip to Artisan mode   
     if ((userCmdl[0] == 'C') && (userCmdl[1] == 'H') && (userCmdl[2] == 'A') && (userCmdl[3] == 'N')) {
       bbrdRctl |=  RCTL_ARTI;
-      //  'chan' command, respond '#'    
+      //  'chan' cmd, respond '#'    
       Serial.println(F("#"));
     }  
     //  c/C set Centigrade units 
@@ -2686,8 +2597,8 @@ void userLoop() {
         Serial.println(vTmpDegC);
       }  
     }
+    // m cmd TBD stored profile from memory 
     if (userCmdl[0] == 'm'){
-      // TBD stored profile from memory 
       profNmbr = (userCmdl.substring(1)).toInt();
       if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
         //Serial.println(F("# userfSele"));
@@ -2754,6 +2665,7 @@ void userLoop() {
       pidcRctl |=  RCTL_AUTO;
       pwmdRctl &= ~RCTL_MANU;
       pwmdRctl |=  RCTL_AUTO;
+      bbrdTmde  = bbrdSetp;
     }
     if ((userCmdl[0] == 'U')                        ) {
       // set new PWM frequency 
