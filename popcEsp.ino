@@ -2310,7 +2310,6 @@ void userLoop() {
         if (userCmdl[2] == '2') {
           userAOT2 = (userCmdl.substring(4)).toInt();
           if (userAOT2 > 99) userAOT2 = 100;
-                //
           dtostrf( userAOT2, 8, 3, mqttVals);
           wrapPubl( (const char * )AOT2Tops , (const char * )mqttVals, sizeof(mqttVals) );
           // Send ack response 
@@ -2319,7 +2318,7 @@ void userLoop() {
       }
       //  PIDxxxx cmds
       if (  ((userCmdl[0] == 'P') && (userCmdl[1] == 'I') && (userCmdl[2] == 'D')) \ 
-         || ((userCmdl[0] == 'p') && (userCmdl[1] == 'i') && (userCmdl[2] == 'd')) ) {
+        || ((userCmdl[0] == 'p') && (userCmdl[1] == 'i') && (userCmdl[2] == 'd')) ) {
         Serial.print(F("# PID "));
         // PID;CT;mSec cmd: PID <= New Cycle Time mSec
         if (  ((userCmdl[4] == 'C') && (userCmdl[5] == 'T')) \
@@ -2344,26 +2343,29 @@ void userLoop() {
         // PID;OFN cmd: PID <= Set PID run control & auto
         if (  ((userCmdl[4] == 'O') && (userCmdl[5] == 'N')) \
            || ((userCmdl[4] == 'o') && (userCmdl[5] == 'n')) ) {
-           pidcStrt();
-           Serial.println(F("ON"));
+          pidcStrt();
+          Serial.println(F("ON"));
         }  
-        // 
+        // PID;RESET
         if (  ((userCmdl[4] == 'R') && (userCmdl[5] == 'E') && (userCmdl[6] == 'S')) \
            || ((userCmdl[4] == 'r') && (userCmdl[5] == 'e') && (userCmdl[6] == 's')) ) {
-           // Artisan <=> TC4 PID;RESET cmd: PID reset internals Setpoint <= Ambient
-           pidcRset();
-           Serial.println(F("RESET"));
+          // Artisan <=> TC4 PID;RESET cmd: PID reset internals Setpoint <= Ambient
+          pidcRset();
+          Serial.println(F("RESET"));
         }
+        // PID;START
         if (  ((userCmdl[4] == 'S') && (userCmdl[5] == 'T') && (userCmdl[6] == 'A')) \
            || ((userCmdl[4] == 's') && (userCmdl[5] == 't') && (userCmdl[6] == 'a')) ) {
-           pidcStrt();
-           Serial.println(F("START"));
+          pidcStrt();
+          Serial.println(F("START"));
         }  
+        // PID;STOP
         if (  ((userCmdl[4] == 'S') && (userCmdl[5] == 'T') && (userCmdl[6] == 'O')) \
            || ((userCmdl[4] == 's') && (userCmdl[5] == 't') && (userCmdl[6] == 'o')) ) {
-           pidcStop();
-           Serial.println(F("STOP"));
+          pidcStop();
+          Serial.println(F("STOP"));
         }  
+        // PID;SV
         if ((userCmdl[4] == 'S') && (userCmdl[5] == 'V')) {
           // set desired temperatre degC
           userDegs = (userCmdl.substring(7)).toInt();
@@ -2383,14 +2385,14 @@ void userLoop() {
           Serial.print  (F("SV: "));
           Serial.println("userDegs");
         }  
+        // PID;SYNC  cmd: PID reset internals Setpoint <= sensTmpC
         if (  ((userCmdl[4] == 'S') && (userCmdl[5] == 'Y') && (userCmdl[6] == 'N')) \
            || ((userCmdl[4] == 's') && (userCmdl[5] == 'y') && (userCmdl[6] == 'n')) ) {
-           // Artisan <=> TC4 PID;SYNC  cmd: PID reset internals Setpoint <= sensTmpC
-           pidcSync();
-           Serial.println(F("SYNC"));
+          pidcSync();
+          Serial.println(F("SYNC"));
         }
+        // PID;T;Kp;Ki;Kd tuning values
         if ((userCmdl[3] == ';') && (userCmdl[4] == 'T')) {
-          // PID;T;Kp;Ki;Kd tuning values
           tempIntA = userCmdl.indexOf( ';' , 6);              // find third ';'
           if (int(tempIntA) < userCmdl.length()) { 
             pidcKp = (userCmdl.substring(6, tempIntA)).toFloat();
@@ -2414,12 +2416,13 @@ void userLoop() {
           Serial.println( pidcTd);
         }  
       }
+      // POPC Cmd : Escape autoArti respond as popC
       if (  ((userCmdl[0] == 'P') && (userCmdl[1] == 'O') && (userCmdl[2] == 'P') && (userCmdl[3] == 'C'))  \
          || ((userCmdl[0] == 'p') && (userCmdl[1] == 'o') && (userCmdl[2] == 'p') && (userCmdl[3] == 'c'))  ) {
-        // Cmd : Escape autoArti respond as popC
         bbrdRctl &= ~RCTL_ARTI; 
         Serial.println(F("# PopC Speak"));
       }
+      // READ cmd:
       if (  ((userCmdl[0] == 'R') && (userCmdl[1] == 'E') && (userCmdl[2] == 'A')) \
          || ((userCmdl[0] == 'r') && (userCmdl[1] == 'e') && (userCmdl[2] == 'a'))  ) {
         //
@@ -2431,16 +2434,19 @@ void userLoop() {
         // don't Send ack response 
         // Serial.println(F("#rea"));
       }
-      if ((userCmdl[0] == 'U') && (userCmdl[1] == 'N') && (userCmdl[2] == 'I') && (userCmdl[3] == 'T')) {
+      // UNIT(S);F/C cmd:
+      if (  ((userCmdl[0] == 'U') && (userCmdl[1] == 'N') && (userCmdl[2] == 'I') && (userCmdl[3] == 'T')) \
+         || ((userCmdl[0] == 'u') && (userCmdl[1] == 'n') && (userCmdl[2] == 'i') && (userCmdl[3] == 't')) ) {
+        Serial.print(F("# UNITS: degs"));
         //  'units' cmd, set user temperature scale 
         if (userCmdl[5] == 'C') {
         userScal = centScal;
+        Serial.println(F("dC"));
         }
         if (userCmdl[5] == 'F') {
         userScal = fahrScal;
+        Serial.println(F("F"));
         }
-        // Send ack response 
-        Serial.println(F("#uni"));
       }  
     }  
     // Artisan mode or Normal Mode cmds 
