@@ -415,7 +415,7 @@ unsigned long frntPoll; //this will help us know when to talk with processing
 //eprm
 float fromEprm;
 int eprmSize, eprmFree;
-// Addresses at end of EEPROM for saved PID parameters
+// Addresses at end of EEPROM for saved PID parameters, TALE = count
 #define EADX_KP (eprmSize - 1 * (sizeof(float)))
 #define EADX_TI (eprmSize - 2 * (sizeof(float)))
 #define EADX_TD (eprmSize - 3 * (sizeof(float)))
@@ -424,6 +424,8 @@ int eprmSize, eprmFree;
 #define EADX_KA (eprmSize - 6 * (sizeof(float)))
 #define EADX_XB (eprmSize - 7 * (sizeof(float)))
 #define EADX_YB (eprmSize - 8 * (sizeof(float)))
+#define EADX_CT (eprmSize - 9 * (sizeof(float)))
+#define EPRM_TALE 9                        
 
 // i-n-g-o MQTT 
 // mqtt strings are declared for both ESP8266 and UNO 
@@ -878,7 +880,7 @@ void eprmInit() {
 #else  
   eprmSize = EEPROM.length();
 #endif  
-  eprmFree = eprmSize - ( 8 * sizeof(float));  // Reserve floats: Kappa Gamma Beta Td Ti Kp XB YB
+  eprmFree = eprmSize - ( EPRM_TALE * sizeof(float));  // Reserve floats: Ka Ga Be Td Ti Kp XB YB CT
 }
 
 void eprmInfo() {
@@ -892,6 +894,9 @@ void eprmInfo() {
     Serial.print(fromEprm);
     EEPROM.get(EADX_TD, fromEprm);
     Serial.print(F(" Td:"));
+    Serial.print(fromEprm);
+    EEPROM.get(EADX_CT, fromEprm);
+    Serial.print(F(" CT:"));
     Serial.print(fromEprm);
     EEPROM.get(EADX_BE, fromEprm);
     Serial.print(F(" Be:"));
@@ -1559,6 +1564,15 @@ void pidcFprm() {
     pidcTd = fromEprm; 
   }  
   //
+  EEPROM.get( EADX_CT, fromEprm);
+  if ( pidcPoll != int(fromEprm)) {
+    if ( !( bbrdRctl & RCTL_ARTI ) ) {
+      Serial.print(F("# New CT from EEPROM:"));
+      Serial.println(fromEprm);
+    }
+    pidcPoll = int(fromEprm); 
+  }  
+  //
   EEPROM.get( EADX_BE, fromEprm);
   if ( pidcBeta != fromEprm) {
     if ( !( bbrdRctl & RCTL_ARTI ) ) {
@@ -1604,6 +1618,8 @@ void pidcInfo() {
   Serial.print(pidcTi);
   Serial.print(F(" Td:"));
   Serial.print(pidcTd);
+  Serial.print(F(" CT:"));
+  Serial.print(pidcPoll);
   Serial.print(F(" Be:"));
   Serial.print(pidcBeta);
   Serial.print(F(" Ga:"));
@@ -1618,7 +1634,6 @@ void pidcInfo() {
 
 // Initialise at processor boot setup; pulls gains from Eprom and overwrites compiled values
 void pidcInit() {
-  float fromEprm;
   Tf = pidcAlpha * pidcTd;
   Epn1 = 0.0;
   Edfn2 = Edfn1 = Edfn = 0;
@@ -2571,6 +2586,10 @@ void userLoop() {
       EEPROM.get(EADX_TD, fromEprm);
       if ( pidcTd    != fromEprm ) {
         EEPROM.put( EADX_TD, pidcTd);
+      }  
+      EEPROM.get(EADX_CT, fromEprm);
+      if ( pidcPoll    != int(fromEprm)) {
+        EEPROM.put( EADX_TD, float(pidcPoll));
       }  
       EEPROM.get(EADX_BE, fromEprm);
       if ( pidcBeta  != fromEprm ) {
