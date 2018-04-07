@@ -159,7 +159,7 @@
 // PWM Drive SSR driver GPIO 2 BLed  
 #define PWMD_OPIN  2
 #define PWMD_MODE  OUTPUT
-#define PWMD_FREQ  123
+#define PWMD_FREQ  128
 // spi on ESP FOR tcpl
 #define TCPL_MISO 12  // SPI Mstr In Slve Out 
 #define TCPL_CLCK 14  // SPI SCk
@@ -567,16 +567,16 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t lenght
   switch(type) {
     case WStype_DISCONNECTED:
       if ( !( bbrdRctl & RCTL_ARTI ) ) {
-        USE_SERIAL.printf("[%u] popcSockSrvr Disconnected!\n", num);
+        USE_SERIAL.printf("[%u] SockSrvr Disc!\n", num);
       }  
     break;
     case WStype_CONNECTED: {
       IPAddress ip = webSocket.remoteIP(num);
       if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-        USE_SERIAL.printf("# [%u] popcSockSrvr Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
+        USE_SERIAL.printf("# [%u] SockSrvr Connect from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
       }  
     	// send message to client
-		  webSocket.sendTXT(num, "popcSockSrvr acks Connected");
+		  webSocket.sendTXT(num, "pSockSrvr acks Connected");
     }
     break;
     case WStype_TEXT:
@@ -842,35 +842,35 @@ void eprmInit() {
 }
 
 void eprmInfo() {
-    Serial.print(F("# EEPROM Size: ")); Serial.print(eprmSize);
-    Serial.print(F(" Free: "));         Serial.println(eprmFree);
-    EEPROM.get(EADX_KP, fromEprm);
-    Serial.print(F("# EEPROM Kp:"));
-    Serial.print(fromEprm);
-    EEPROM.get(EADX_TI, fromEprm);
-    Serial.print(F(" Ti:"));
-    Serial.print(fromEprm);
-    EEPROM.get(EADX_TD, fromEprm);
-    Serial.print(F(" Td:"));
-    Serial.print(fromEprm);
-    EEPROM.get(EADX_CT, fromEprm);
-    Serial.print(F(" CT:"));
-    Serial.print(fromEprm);
-    EEPROM.get(EADX_BE, fromEprm);
-    Serial.print(F(" Be:"));
-    Serial.print(fromEprm);
-    EEPROM.get(EADX_GA, fromEprm);
-    Serial.print(F(" Ga:"));
-    Serial.print(fromEprm);
-    EEPROM.get(EADX_KA, fromEprm);
-    Serial.print(F(" Ka:"));
-    Serial.print(fromEprm);
-    EEPROM.get(EADX_XB, fromEprm);
-    Serial.print(F(" Xb:"));
-    Serial.print(fromEprm);
-    EEPROM.get(EADX_YB, fromEprm);
-    Serial.print(F(" Yb:"));
-    Serial.println(fromEprm);
+  Serial.print(F("# EEPROM Size: ")); Serial.print(eprmSize);
+  Serial.print(F(" Free: "));         Serial.println(eprmFree);
+  EEPROM.get(EADX_KP, fromEprm);
+  Serial.print(F("# EEPROM Kp:"));
+  Serial.print(fromEprm);
+  EEPROM.get(EADX_TI, fromEprm);
+  Serial.print(F(" Ti:"));
+  Serial.print(fromEprm);
+  EEPROM.get(EADX_TD, fromEprm);
+  Serial.print(F(" Td:"));
+  Serial.print(fromEprm);
+  EEPROM.get(EADX_CT, fromEprm);
+  Serial.print(F(" CT:"));
+  Serial.print(fromEprm);
+  EEPROM.get(EADX_BE, fromEprm);
+  Serial.print(F(" Be:"));
+  Serial.print(fromEprm);
+  EEPROM.get(EADX_GA, fromEprm);
+  Serial.print(F(" Ga:"));
+  Serial.print(fromEprm);
+  EEPROM.get(EADX_KA, fromEprm);
+  Serial.print(F(" Ka:"));
+  Serial.print(fromEprm);
+  EEPROM.get(EADX_XB, fromEprm);
+  Serial.print(F(" Xb:"));
+  Serial.print(fromEprm);
+  EEPROM.get(EADX_YB, fromEprm);
+  Serial.print(F(" Yb:"));
+  Serial.println(fromEprm);
 }
 
 #if WITH_LCD
@@ -917,26 +917,23 @@ void lcdsLoop() {
 //
 void connCbck() {
   if ( !( bbrdRctl & RCTL_ARTI ) ) {
-    Serial.println(F("# connCbck : connected to MQTT server"));
+    Serial.println(F("# MQTT srvr connCbck"));
   }
 }
 
 void discCbck() {
   if ( !( bbrdRctl & RCTL_ARTI ) ) {
-    Serial.println(F("# discCbck disc from mqtt, pause .."));
+    Serial.println(F("# MQTT srvr disc"));
     delay(100);
   }  
   #if WIFI_MQTT 
-  if ( !( bbrdRctl & RCTL_ARTI ) ) {
-      Serial.println(F("# discCbck : popcMqtt.connect pause  4 .."));
-    }  
-    popcMqtt.connect();
-    delay(2000);
-    if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-      Serial.println(F("# Wifi Mqtt.connect timed out. calling popcSubs()"));
-    }  
-    //Je18     
-    popcSubs();
+  popcMqtt.connect();
+  delay(2000);
+  if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+    Serial.println(F("# Mqtt.connect timeOut"));
+  }  
+  //Je18     
+  popcSubs();
   #endif  
 }
 
@@ -951,7 +948,6 @@ void dataCbck(String& topic, String& data) {
   int   topiIndx;
   float topiValu;
   if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-  //if ( 0 ) {
     Serial.print(F("# dataCbck topic:"));
     Serial.print(topic);
     Serial.print(F("   data:"));
@@ -1057,9 +1053,6 @@ void wrapPubl( const char * tTops , const char * tVals, int tInt ) {
 
 //pupSub / ESP ticker callbacks and service 
 void cbck1000() {
-  //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-  //  Serial.println(F("# cbck1000 sets cb10Rctl ATTN"));
-  //}  
   cb10Rctl |= RCTL_ATTN;
 }
 
@@ -1073,27 +1066,14 @@ void cb10Svce() {
   dtostrf( adc0Curr, 8, 3, mqttVals);
   wrapPubl( (const char * )adc0Tops , (const char * )mqttVals, sizeof(mqttVals) ); 
   wrapPubl( (const char * )ArspTops , (const char * )artiProg, sizeof(artiProg) ); 
-  //
-  //if ( rCode) {
-    //Serial.print(F("# cbck1000 bad      RC: "));
-    //Serial.println(rCode);
-  //}
-  //
   cb10Rctl &= ~RCTL_ATTN;
 }
 
 void cbck2000() {
-  if ( 0 ) {
-  //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-    Serial.println(F("# cbck200 sets cb10Rctl ATTN"));
-  }  
-  //
   cb20Rctl |= RCTL_ATTN;
 }
 
 void cb20Svce() {
-  //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-    //Serial.println(F("# cb20Svce"));
   int rCode = 0;
   // Artisan interface                      'Read' Cmd; Send Ambient:Targ:Sens:Prof:Duty
   if ( userScal == fahrScal) {
@@ -1155,16 +1135,10 @@ void cb20Svce() {
 }
 
 void cbck9000() {
-  if ( 0 ) {
-  // if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-    Serial.println(F("# cbck9000 sets cb90Rctl ATTN"));
-  }  
   cb90Rctl |= RCTL_ATTN;
 }
 
 void cb90Svce() {
-	//if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-  	//Serial.println(F("cb90Svce"));
   int rCode = 0;
   dtostrf( pidcElap, 12, 3, mqttVals);
   wrapPubl( c900Tops, (const char *)(mqttVals), sizeof(mqttVals) ); 
@@ -1193,15 +1167,6 @@ void cb90Svce() {
     dtostrf(           holdTmpC,  8, 3, mqttVals);
   }  
   wrapPubl( (const char * )ptmpTops, (const char *)(mqttVals), sizeof(mqttVals) ); 
-  //
-  //if ( rCode) {
-    //Serial.print(F("# cb90Svce bad cuml RC: "));
-    //Serial.println(rCode);
-  //}
-  //if ( rCode) {
-    //Serial.print(F("# cbck9000 bad cuml RC: "));
-    //Serial.println(rCode);
-  //}
   cb90Rctl &= ~RCTL_ATTN;
 }  
   
@@ -1214,12 +1179,6 @@ void wrapSubs( const char * tTops ) {
   rCode = popcMqtt.subscribe( (const char * )tTops );
 #endif
 #endif
-  if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-    Serial.print(F("# wrapSubs popcMqtt.subscribe topic : "));
-    Serial.print(tTops);
-    Serial.print(F(" RC : "));
-    Serial.println(rCode);
-  }
   //delay(100);
 }    
 
@@ -1265,6 +1224,7 @@ void millLoop() {
     millMark +=  MILL_POLL_USEC;
     // mill        
     // max mill rate 5uSec per on-off
+#if 0
     if ( !(millStep % 1000) )  {
       if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
         Serial.print(F("# adc0:"));  Serial.print  (adc0Curr);
@@ -1273,6 +1233,7 @@ void millLoop() {
         Serial.print(F(" Avge:")); Serial.println(adc0Avge);
       }
     }
+#endif    
     // every step of mill: checck PWM %  for slow off/on output change 
     if ( ( pwmdPcnt * 1 )  > ( millStep % 1   ) ) {
       //use Outp as trig to avoid repeated i/o traffic, set on: offn mark time 
@@ -1411,77 +1372,81 @@ void pidcDbug() {
 
 // Retrieve updated parms from eprom 
 void pidcFprm() {
+  byte anewTale = 0;
+  Serial.print(F("# New vals from EEPROM:"));
   EEPROM.get( EADX_KP, fromEprm);
   if ( pidcKp != fromEprm) {
     if ( !( bbrdRctl & RCTL_ARTI ) ) {
-      Serial.print(F("# New Kp from EEPROM:"));
-      Serial.println(fromEprm);
+      Serial.print(F("Kp:")); Serial.print(fromEprm);
     }
-    pidcKp = fromEprm; 
+    pidcKp = fromEprm;
+    anewTale += 1;
   }  
   //
   EEPROM.get( EADX_TI, fromEprm);
   if ( pidcTi != fromEprm) {
     if ( !( bbrdRctl & RCTL_ARTI ) ) {
-      Serial.print(F("# New TiKp from EEPROM:"));
-      Serial.println(fromEprm);
+      Serial.print(F(" Ti:")); Serial.print(fromEprm);
     }
     pidcTi =  fromEprm; 
+    anewTale += 1;
   }  
   //
   EEPROM.get( EADX_TD, fromEprm);
   if ( pidcTd != fromEprm) {
     if ( !( bbrdRctl & RCTL_ARTI ) ) {
-      Serial.print(F("# New Kp from EEPROM:"));
-      Serial.println(fromEprm);
+      Serial.print(F(" Td:")); Serial.print(fromEprm);
     }
     pidcTd = fromEprm; 
+    anewTale += 1;
   }  
   //
   EEPROM.get( EADX_CT, fromEprm);
   if ( pidcPoll != int(fromEprm)) {
     if ( !( bbrdRctl & RCTL_ARTI ) ) {
-      Serial.print(F("# New CT from EEPROM:"));
-      Serial.println(fromEprm);
+      Serial.print(F(" CT:")); Serial.print(fromEprm);
     }
     pidcPoll = int(fromEprm); 
+    anewTale += 1;
   }  
   //
   EEPROM.get( EADX_BE, fromEprm);
   if ( pidcBeta != fromEprm) {
     if ( !( bbrdRctl & RCTL_ARTI ) ) {
-      Serial.print(F("# New Kp from EEPROM:"));
-      Serial.println(fromEprm);
+      Serial.print(F(" Be:")); Serial.print(fromEprm);
     }
     pidcBeta = fromEprm; 
+    anewTale += 1;
   }  
   //
   EEPROM.get( EADX_KA, fromEprm);
   if ( pidcKappa != fromEprm) {
-    if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-      Serial.print(F("# New Ka from EEPROM:"));
-      Serial.println(fromEprm);
+    if ( !( bbrdRctl & RCTL_ARTI ) ) {
+      Serial.print(F(" Ka:")); Serial.print(fromEprm);
     }
     pidcKappa = fromEprm; 
+    anewTale += 1;
   }  
   //
   EEPROM.get( EADX_XB, fromEprm);
   if ( pidcXBias != fromEprm) {
     if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-      Serial.print(F("# New Xb from EEPROM"));
-      Serial.println(fromEprm);
+      Serial.print(F(" Xb:")); Serial.print(fromEprm);
     }
     pidcXBias = fromEprm; 
+    anewTale += 1;
   }  
   //
   EEPROM.get( EADX_YB, fromEprm);
   if ( pidcYBias != fromEprm) {
     if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-      Serial.print(F("# New Yb from EEPROM"));
-      Serial.println(fromEprm);
+      Serial.print(F(" Yb:")); Serial.println(fromEprm);
     }
     pidcYBias = fromEprm; 
-  }  
+    anewTale += 1;
+  } 
+  Serial.print(F("  "));Serial.print( anewTale); Serial.println(F(" new Vals"));
+   
 }
 
 // Serial logout of PID internal values 
@@ -1530,7 +1495,7 @@ void pidcLoop() {
     if ( (pidcRctl & RCTL_RUNS)  == 0 ) {
       // Poll/Thermocouple == 0 Shutdown
       if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-        Serial.println(F("pidc stop"));
+        Serial.println(F("# pidc stop"));
       }  
       Un = pidcUn = pidcRn = pidcYn = 0.00;
     } else {
@@ -1744,14 +1709,6 @@ void profLoop() {
       degCHist[1] = degCHist[0] ;
       degCHist[0] = int(sensTmpC);
       prevTmpC    = sensTmpC;
-      //  if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-        //Serial.print(F("# Curr:"));
-        //Serial.print(sensTmpC);
-        //Serial.print(F(" Prev:"));
-        //Serial.print(prevTmpC);
-        //Serial.print(F(" Cdpm:"));
-        //Serial.println(sensCdpm);
-      //  }  
     }  
     // update billboard
     bbrdFill();
@@ -1771,11 +1728,6 @@ void profLoop() {
           //pidcDbug();
         //}  
         Serial.println(F(" "));
-        // Rotswitch 
-        //Serial.print(F("# Rots: ")); Serial.print(rotsValu());
-        //Serial.print(F("    ");      Serial.print(F("tcplRctl: "));
-        //Serial.print(tcplRctl);      Serial.print(F("    "));
-        // Front End
       } else {
         // If bbrd flagged send Artisan csv logging serial 
         if ( bbrdRctl & RCTL_ATTN ) {
@@ -1815,9 +1767,8 @@ void profLoop() {
 //TCCR2B = TCCR2B & B11111000 | B00000111     tmr 2 divisor:  1024 for PWM freq    30.64 Hz
 //
 void pwmdExpo( byte dtwoExpo) {
-// tbd exponent for ESP
+// ESP Default Frequ is 1024. Writing new Freq seems to cause exception
 #if PROC_ESP
-  //analogWriteFrequency(32);
 #endif  // PROC_ESP
 #if PROC_UNO
   switch (dtwoExpo) {
@@ -1848,8 +1799,8 @@ void pwmdExpo( byte dtwoExpo) {
 void pwmdSetF( double newFreq) {
 #if PROC_ESP
   //tbd   
-  analogWriteFreq(newFreq);
-  pwmdFreq = int(newFreq);
+  //analogWriteFreq(newFreq);
+  pwmdFreq = PWMD_FREQ;
 #else 
   if        ( newFreq < 43.32) {
     pwmdExpo( 10); 
@@ -1875,8 +1826,9 @@ void pwmdInit() {
   pwmdDuty = 0;
   pinMode( PWMD_OPIN, PWMD_MODE);
 #if PROC_ESP
-  //#define PWMRANGE 254
-  //analogWriteRange(uint(254));
+  #define PWMRANGE 255
+  analogWriteRange(uint(255));
+  //analogWriteFreq(uint(PWMD_FREQ));
 #endif  
   pwmdSetF( PWMD_FREQ);			
   pwmdMark =  millis() + PWMD_POLL_MSEC;
@@ -1898,10 +1850,6 @@ void pwmdLoop() {
       // last run control test has precedence 
       if ( pwmdRctl & RCTL_MANU) {
         pwmdTarg = byte( 255.0 * userDuty / 100.0 );
-        //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-          //Serial.print(F("# pwmdTarg: "));
-          //Serial.println(pwmdTarg);
-        //}  
       }
       if ( pwmdRctl & RCTL_AUTO) {
         pwmdTarg = byte(pidcUn);
@@ -1910,12 +1858,14 @@ void pwmdLoop() {
       pwmdPcnt = byte ((100.0 * pwmdOutp / 255) +0.5);
 #if PROC_ESP
       if ( pwmdFlag ) {
-        pwmdOutp *= 4; 
         Serial.print(F("# pwO"));
         Serial.println(int(pwmdOutp));
         pwmdFlag = 0;
-        //delay(10);
-        //analogWrite( PWMD_OPIN, int(pwmdOutp));
+        yield();
+        delay(10);
+        //  
+        analogWrite( PWMD_OPIN, int(pwmdOutp));
+        //analogWrite( PWMD_OPIN, 1);
       }  
 #endif      
 #if PROC_UNO
@@ -1943,8 +1893,6 @@ int rotsValu() {
   if ( tVal & 0x04) resp += 4;
   if ( tVal & 0x08) resp += 8;
 #endif
-  //Serial.print(F("# TWval:"));
-  //Serial.println(tVal);
   return(resp);
 }
     
@@ -2058,7 +2006,6 @@ void tcplInit() {
 #if PROC_ESP
   tcpl.setTCfactor(K_TC);
   tcpl.begin();
-  //Serial.println(F("# tcpl.begin"));
 #endif
 #endif
   tcplMark = millis() + TCPL_POLL_MSEC;
@@ -2214,27 +2161,15 @@ void twioInit() {
 byte twioRead8() {
   twioWrite8( 0xFF & TWIO_IMSK );
   twioCurr = twio.read8();
-  //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-  //  Serial.print(f("# twioRead8:"));
-  //  Serial.println(twioCurr);
-  //}  
   return twioCurr;
 }
 
 void twioWrite8( byte tByt ) {
   twio.write8( tByt);
-  //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-  //  Serial.print(f("# twioWrite8: "));
-  //  Serial.println(tByt);
-  //}  
 }
 
 void twioWritePin( byte tPin, byte tByt) {
   twio.write( tPin, tByt);
-  //if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-  //  Serial.print(Ff("# twioWritePin: "));
-  //  Serial.println(tByt);
-  //}  
 }
 #endif // WITH_PCF8574
 
@@ -2259,13 +2194,11 @@ void userLoop() {
     // read from buffer until first linefeed, remaining chars staay in hdwre serial buffer 
     userCmdl = Serial.readStringUntil('\n');
     //userCmdl[userCmdl.length()-1] = '\0';
-    //Serial.print(F("# userCmdl: "));
-    //Serial.println(userCmdl);
     userRctl |= RCTL_ATTN;
   }
   if (userRctl & RCTL_ATTN) {
     if ( (!( bbrdRctl & RCTL_ARTI )) && ( bbrdRctl & RCTL_DIAG) ) {
-      Serial.print (F("# userSvce usderCmdl : "));
+      Serial.print (F("# usderCmdl: "));
       Serial.println(userCmdl);
     }  
 #if WIFI_MQTT
@@ -2596,18 +2529,17 @@ void userLoop() {
         vTmpDegC = float(ambiTmpC) + (vChgGrms / ( vChgGrms + tempIntB )) * ( vTmpDegC - float(ambiTmpC));
       }
       vChgGrms = tempIntB;
-      if (0) {
+#if 0
         Serial.print(F("# New vChgGrms: "));
         Serial.print(vChgGrms);
         Serial.print(F("  vTmpDegC: "));
         Serial.println(vTmpDegC);
-      }  
+#endif
     }
     // m cmd TBD stored profile from memory 
     if (userCmdl[0] == 'm'){
       profNmbr = (userCmdl.substring(1)).toInt();
       if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-        //Serial.println(F("# userfSele"));
       }  
       stepSecs = 0;
     }
@@ -2648,12 +2580,8 @@ void userLoop() {
       pidcRctl |=  RCTL_AUTO;
       pwmdRctl &= ~RCTL_MANU;
       pwmdRctl |=  RCTL_AUTO;
-      if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-        Serial.print(F("userCmdl r sets rampCdpm to: "));
-        Serial.println(rampCdpm);
-      }  
       // Send ack response 
-      Serial.println(F("#r"));
+      Serial.print(F("#r:")); Serial.println(userDgpm);
     }
     if ((userCmdl[0] == 'S') || (userCmdl[0] == 's')) {
       // set desired setpoint / immed target temperatre deg
@@ -2680,8 +2608,7 @@ void userLoop() {
     }
     if ((userCmdl[0] == 'U') || (userCmdl[0] == 'u')) {
       if  (!( bbrdRctl & RCTL_ARTI )) {
-        Serial.print(F("# pwmdFreq: "));
-        Serial.println(pwmdFreq);
+        Serial.print(F("# pwmdFreq: ")); Serial.println(pwmdFreq);
       }  
     }
     if (userCmdl[0] == 'V') {
@@ -2699,11 +2626,9 @@ void userLoop() {
     if ((userCmdl[0] == 'W') || (userCmdl[0] == 'w')) {
       // set new pwmD Width, run control flag to indicate manual override
       userDuty = (userCmdl.substring(1)).toInt();
-      //Serial.print  (F("#y"));
-      //Serial.println(userDuty);
       if (userDuty > 99) userDuty = 100;
       if ((bbrdRctl & RCTL_DIAG) == RCTL_DIAG) {  
-        Serial.print(F("# Manu userDuty: "));
+        Serial.print(F("# Manu PWM%: "));
         Serial.println(userDuty);
       }  
       //    Serial.print("# New PWM: ");
