@@ -97,8 +97,8 @@
 //               Copy from /.arduino15/packages/esp8266/hardware/esp8266/2.3.0/libraries/Ticker/Ticker.h
 //
 //  Code compiler switches: 1/0 Enab/Dsel UNO-ESP proc HW, Wifi options - Rebuild, Upload after changing these 
-#define PROC_UNO      0                  // Compile for Arduino Uno
-#define PROC_ESP      1                  // Compile for ESP8266
+#define PROC_ESP      0                  // Compile for ESP8266
+#define PROC_UNO      1                  // Compile for Arduino Uno
 #define IFAC_ARTI     1                  // Start with Artisan interface on Serial
 #define WITH_LCD      1                  // Hdwre has I2C 2x16 LCD display of either type
 #define WITH_LCD_TYPA 1                  // LCD display type: http://www.yourduino.com/sunshop/index.php?l=product_detail&p=170
@@ -430,10 +430,10 @@ const char KappaTops[] = "/popc/pidc/Kappa";
 //  Mr18  8.0    0.4      2.00    2.0   1.0  0.25  Nesc
 //
 //
-float pidcKp    =   3.000;                // P-Term gain
-float pidcKc    =   3.000;                // P-Term gain compensated for setpoint above ambient
-float pidcTi    =   2.000;                // I-Term Gain sec ( Ti++ = Gain--)
-float pidcTd    =   8.000;                // D-Term Gain sec ( Td++ = Gain++)
+float pidcKp      =   3.000;              // P-Term gain
+float pidcKc      =   3.000;              // P-Term gain compensated for setpoint above ambient
+float pidcTi      =   2.000;              // I-Term Gain sec ( Ti++ = Gain--)
+float pidcTd      =   8.000;              // D-Term Gain sec ( Td++ = Gain++)
 //
 float pidcBeta    =   1.000;              // P-term Refr vs YInp
 float pidcGamma   =   1.000;              // D-term Refr vs YInp
@@ -444,7 +444,7 @@ float pidcYBias   =   0.000;              // Steady temp with 100% pwm ( 0 : do 
 //
 float pidcRn      =  ambiTmpC;            // Refr setpoint
 float pidcYn      =  ambiTmpC;            // YInp input
-float pidcEn      =   0.000;              // Beta * Refr - Inpu
+float pidcEn      =   0.000;              // Refr - Inpu
 float pidcBn      =   0.000;              // If pidCYterm > 0  Constant setpoint refr bias
 float pidcUMax    = 255.000;              // Outp Max
 float pidcUMin    =   0.000;              // Outp Min
@@ -455,7 +455,7 @@ float pidcPn, pidcIn, pidcDn       = 0.0; // per sample P-I-D-Err Terms
 float pidcPc, pidcIc, pidcDc       = 0.0; // cumulative P-I-D components 
 float pidcUn = 0.0;                       // PID controller Output
 // 
-const char versChrs[] = "2018Apr06-MAX6675-Suppt";
+const char versChrs[] = "2018Apr08-ESP-FixedFreqPWM";
 /// wip: stored profiles
 // profiles
 //   stored as profiles 1-9 with steps 0-9 in each 
@@ -503,10 +503,9 @@ byte pwmdPcnt;                                                        // Percent
 #define RCTL_INFO 0x01
 
 #if IFAC_ARTI
-byte  bbrdRctl =  RCTL_ARTI;
+byte  bbrdRctl  = RCTL_ARTI;
 #else
-//byte  bbrdRctl =  RCTL_INFO | RCTL_DIAG; 
-byte  bbrdRctl =  RCTL_INFO;
+byte  bbrdRctl  = RCTL_INFO;
 #endif
 byte  frntRctl  = 0x00;
 #if WITH_LCD
@@ -1499,16 +1498,14 @@ void pidcLoop() {
       }  
       Un = pidcUn = pidcRn = pidcYn = 0.00;
     } else {
-      // 
-      Ts = (pidcPoll / 1000.0); // sample interval (Sec)
-      // 
-      if (!isnan(targTmpC)) pidcRn = (float)targTmpC;
-      if (!isnan(sensTmpC)) pidcYn = (float)sensTmpC;
-      // P term 
-      pidcEn  = pidcRn - pidcYn;
-      Epn = pidcBeta * pidcRn - pidcYn;
+      //  Run PID iteration 
+      Ts = (pidcPoll / 1000.0);                        // Sample Interval             (Sec)
+      if (!isnan(targTmpC)) pidcRn = (float)targTmpC;  // Update Reference            (Setpoint)
+      if (!isnan(sensTmpC)) pidcYn = (float)sensTmpC;  // Update Measured Value       (Sensed temperature) 
+      pidcEn  = pidcRn - pidcYn;                       // Error term:              =  (Setpoint - Measured ) 
+      Epn = pidcBeta * pidcRn - pidcYn;                // Proportional Error term: =  (Beta * Setpoint - Measured )  
       // B term 
-      if ( pidcYBias == 0) {
+      if ( pidcYBias == 0) {                           // Bias Increases as Ref demand temperature increases
         pidcBn = 0;
       } else {
         pidcBn = 100 * ( pidcRn - pidcXBias ) / ( pidcYBias - pidcXBias ); 
@@ -1517,36 +1514,36 @@ void pidcLoop() {
       if ( pidcTd <= 0 ) {
         Edfn2 = Edfn1 = Edfn = 0;
       } else {
-        Edn = pidcGamma * pidcRn - pidcYn;
+        Edn = pidcGamma * pidcRn - pidcYn;             // For D term Refence value is scaled by Gamma
         // Filter the derivate error:
-        Tf = pidcAlpha * pidcTd;
-        TsDivTf = Ts / Tf;
+        Tf = pidcAlpha * pidcTd;                       // Filter time is usually Sample time / 10 
+        TsDivTf = Ts / Tf;                             // Filter smooths abrupt changes in error
         Edfn = (Edfn1 / (TsDivTf + 1.0)) +  (Edn * ((TsDivTf) / (TsDivTf + 1.0)));
       }
       // Accum Combine P, I, D terms 
       dUn = 0;
       // P term 
       // try temp compensated gain  pidcPn = pidcKp *  (Epn - Epn1);
-      pidcPn = pidcKc *  (Epn - Epn1);
-      pidcPc += pidcPn;
+      pidcPn = pidcKc *  (Epn - Epn1);                 // P term for this sample period ( Using compensated gain)
+      pidcPc += pidcPn;                                // Pc cumulative used only for logging 
       // I term 
       if ( pidcTi > 0.0 ) {
         //Jn10 KtKp pidcIn = pidcKp * ((Ts / pidcTi) * pidcEn);
-        pidcIn = ((Ts / pidcTi) * pidcEn);
+        pidcIn = ((Ts / pidcTi) * pidcEn);             // I term for sample period
       } else {
         pidcIn = 0;
       }    
-      pidcIc += pidcIn;
-      // D term
-      if ( pidcTd > 0.0 ) {
+      pidcIc += pidcIn;                                // Ic cumulative I-term for logging 
+      // D term computes change in rate                                      
+      if ( pidcTd > 0.0 ) {                            // D term compares ( curr + oldest ) vs (2 * middle)  values  
         //Jn10 KtKp pidcDn = pidcKp * ((pidcTd / Ts) * (Edfn - (2 * Edfn1) + Edfn2));
         pidcDn = ((pidcTd / Ts) * (Edfn - (2 * Edfn1) + Edfn2));
       } else {
         pidcDn = 0;
       } 
-      pidcDc += pidcDn; 
+      pidcDc += pidcDn;                                // Dc cumulative for logging 
       //dUn    = pidcPn + pidcIn + pidcDn;
-      dUn    = pidcPn + pidcIn + pidcDn;
+      dUn    = pidcPn + pidcIn + pidcDn;               // dUn: Combined P+I+D deltas for sample period
       // Integrator anti-windup logic:
       if ( dUn > (pidcUMax - Un1) ) {
         dUn = pidcUMax - Un1;
@@ -1565,13 +1562,13 @@ void pidcLoop() {
       }
       // Update output if increment is valid number 
       if (!isnan(dUn)) {
-        Un = Un1 + dUn;
+        Un = Un1 + dUn;                               // Add PID delta to Output value
         if ( pidcYBias > 0 ) {
           // tbd figure how to add bias to increment 
-          Un = Un1 + dUn;
+          Un = Un1 + dUn;                               
         }  
       }  
-      pidcUn = Un;
+      pidcUn = Un;                                    // Copy into external Output Variable  
       // Updates indexed values;
       Un1   = Un;
       Epn1  = Epn;
@@ -2250,8 +2247,7 @@ void userLoop() {
         }  
       }
       //  PIDxxxx cmds
-      if (  ((userCmdl[0] == 'P') && (userCmdl[1] == 'I') && (userCmdl[2] == 'D')) \ 
-        || ((userCmdl[0] == 'p') && (userCmdl[1] == 'i') && (userCmdl[2] == 'd')) ) {
+      if ((userCmdl[0] == 'P') && (userCmdl[1] == 'I') && (userCmdl[2] == 'D')) { 
         Serial.print(F("# PID "));
         // PID;CT;mSec cmd: PID <= New Cycle Time mSec
         if (  ((userCmdl[4] == 'C') && (userCmdl[5] == 'T')) \
@@ -2266,35 +2262,30 @@ void userLoop() {
           Serial.println(F(""));
         }
         // PID;OFF cmd: PID <= Stop PID running, zero outputs 
-        if (  ((userCmdl[4] == 'O') && (userCmdl[5] == 'F') && (userCmdl[6] == 'F')) \
-           || ((userCmdl[4] == 'o') && (userCmdl[5] == 'f') && (userCmdl[6] == 'f')) ) {
+        if ((userCmdl[4] == 'O') && (userCmdl[5] == 'F') && (userCmdl[6] == 'F')) {
           // Artisan <=> TC4 PID;OFF cmd: PWM, PID Run Ctrl Off,  PID reset internals
           pidcRset();                      // Switch off PID Rctl after this in case pidcRset() doesn't 
           pidcStop();
           Serial.println(F("OFF"));
         }
         // PID;OFN cmd: PID <= Set PID run control & auto
-        if (  ((userCmdl[4] == 'O') && (userCmdl[5] == 'N')) \
-           || ((userCmdl[4] == 'o') && (userCmdl[5] == 'n')) ) {
+        if ((userCmdl[4] == 'O') && (userCmdl[5] == 'N')) {
           pidcStrt();
           Serial.println(F("ON"));
         }  
         // PID;RESET
-        if (  ((userCmdl[4] == 'R') && (userCmdl[5] == 'E') && (userCmdl[6] == 'S')) \
-           || ((userCmdl[4] == 'r') && (userCmdl[5] == 'e') && (userCmdl[6] == 's')) ) {
+        if ((userCmdl[4] == 'R') && (userCmdl[5] == 'E') && (userCmdl[6] == 'S')) {
           // Artisan <=> TC4 PID;RESET cmd: PID reset internals Setpoint <= Ambient
           pidcRset();
           Serial.println(F("RESET"));
         }
         // PID;START
-        if (  ((userCmdl[4] == 'S') && (userCmdl[5] == 'T') && (userCmdl[6] == 'A')) \
-           || ((userCmdl[4] == 's') && (userCmdl[5] == 't') && (userCmdl[6] == 'a')) ) {
+        if ((userCmdl[4] == 'S') && (userCmdl[5] == 'T') && (userCmdl[6] == 'A')) {
           pidcStrt();
           Serial.println(F("START"));
         }  
         // PID;STOP
-        if (  ((userCmdl[4] == 'S') && (userCmdl[5] == 'T') && (userCmdl[6] == 'O')) \
-           || ((userCmdl[4] == 's') && (userCmdl[5] == 't') && (userCmdl[6] == 'o')) ) {
+        if ((userCmdl[4] == 'S') && (userCmdl[5] == 'T') && (userCmdl[6] == 'O')) {
           pidcStop();
           Serial.println(F("STOP"));
         }  
@@ -2319,8 +2310,7 @@ void userLoop() {
           Serial.println("userDegs");
         }  
         // PID;SYNC  cmd: PID reset internals Setpoint <= sensTmpC
-        if (  ((userCmdl[4] == 'S') && (userCmdl[5] == 'Y') && (userCmdl[6] == 'N')) \
-           || ((userCmdl[4] == 's') && (userCmdl[5] == 'y') && (userCmdl[6] == 'n')) ) {
+        if ((userCmdl[4] == 'S') && (userCmdl[5] == 'Y') && (userCmdl[6] == 'N')) { 
           pidcSync();
           Serial.println(F("SYNC"));
         }
@@ -2350,16 +2340,12 @@ void userLoop() {
         }  
       }
       // POPC Cmd : Escape autoArti respond as popC
-      if (  ((userCmdl[0] == 'P') && (userCmdl[1] == 'O') && (userCmdl[2] == 'P') && (userCmdl[3] == 'C'))  \
-         || ((userCmdl[0] == 'p') && (userCmdl[1] == 'o') && (userCmdl[2] == 'p') && (userCmdl[3] == 'c'))  ) {
+      if ((userCmdl[0] == 'P') && (userCmdl[1] == 'O') && (userCmdl[2] == 'P') && (userCmdl[3] == 'C')) {
         bbrdRctl &= ~RCTL_ARTI; 
         Serial.println(F("# PopC Speak"));
       }
       // READ cmd:
-      if (  ((userCmdl[0] == 'R') && (userCmdl[1] == 'E') && (userCmdl[2] == 'A')) \
-         || ((userCmdl[0] == 'r') && (userCmdl[1] == 'e') && (userCmdl[2] == 'a'))  ) {
-        //
-        //bbrdArti();
+      if ((userCmdl[0] == 'R') && (userCmdl[1] == 'E') && (userCmdl[2] == 'A')) {
         for ( tempIntA = 0; tempIntA < sizeof(artiResp); tempIntA++ ) {
           Serial.print(artiResp[tempIntA]);
         }  
@@ -2368,8 +2354,7 @@ void userLoop() {
         // Serial.println(F("#rea"));
       }
       // UNIT(S);F/C cmd:
-      if (  ((userCmdl[0] == 'U') && (userCmdl[1] == 'N') && (userCmdl[2] == 'I') && (userCmdl[3] == 'T')) \
-         || ((userCmdl[0] == 'u') && (userCmdl[1] == 'n') && (userCmdl[2] == 'i') && (userCmdl[3] == 't')) ) {
+      if ((userCmdl[0] == 'U') && (userCmdl[1] == 'N') && (userCmdl[2] == 'I') && (userCmdl[3] == 'T')) {
         Serial.print(F("# UNITS: degs"));
         //  'units' cmd, set user temperature scale 
         if (userCmdl[5] == 'C') {
