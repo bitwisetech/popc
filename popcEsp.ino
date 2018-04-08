@@ -2820,9 +2820,10 @@ void loop() {
   userLoop();
   pwmdLoop();
   rotsLoop();
-#if WITH_MAX31855
+#if ( WITH_MAX31855 || WITH_MAX6675)
   tcplRealLoop();
-#else  
+#endif
+#if WITH_VIRTTCPL
   virtTcplLoop();
 #endif
   millLoop();
