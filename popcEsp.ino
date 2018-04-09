@@ -107,11 +107,36 @@
 #define WITH_MAX6675  1                  // Hdwre has MAX6675  thermocouple + circuit
 #define WITH_VIRTTCPL 0                  // No hdwre, simulate virtual thermocouple output
 #define WITH_PCF8574  0                  // Hdwre has I2C I/O Extender      
-#define WITH_OFFN     1                  // Use ~250cy via mill Off-On SSR, not fast h/w PWM
+#define WITH_OFFN     1                  // Use 250mSec cycle via mill Off-On SSR, not fast h/w PWM
 #define WITH_WIFI     0                  // Compile for Wifi MQTT clientF
 #define WIFI_MQTT     0                  // Compile for Wifi MQTT clientF
 #define WIFI_SOKS     0                  // Compile for Wifi Web Sckt Srvr
 #define WIFI_WMAN     0                  // Compile for Wifi Manager
+///
+// ESP Pin Assignments 
+#if PROC_ESP
+// A/D 1v 10b on 
+// Off/On SSR driver GPIO 16 deepWake     
+#define OFFN_OPIN  16
+// Handle either LED polarity with: (1 & ~ONBD_LOWON) for light, (0 | LED_LOWN) for dark 
+#define ONBD_OPIN   0
+#define ONBD_LOWON  1
+// PWM Drive SSR driver GPIO 2 BLed  
+#define PWMD_OPIN   2
+#define PWMD_MODE  OUTPUT
+#define PWMD_FREQ 128
+// spi on ESP FOR tcpl
+#define TCPL_MISO  12  // SPI Mstr In Slve Out 
+#define TCPL_CLCK  14  // SPI SCk
+#define TCPL_CSEL  15  // SPI ChipSel 10K Gnd 
+// PCF8574 ESP: ROTS Rotary 16way encoder switch;
+// i2c on esp for TWIO pcf8574
+#define TWIO_SDA    4     // I2C SDA
+#define TWIO_SCL    5     // I2C SCL
+// 
+#define SCOP_OPIN  13    // debug flag uses 'MOSI' line  
+//
+#endif   // PROC_ESP
 ///
 // UNO pin assignments
 #if PROC_UNO
@@ -119,7 +144,7 @@
 #define OFFN_OPIN  2
 // Onboard Led indicates duty cycle
 #define ONBD_OPIN LED_BUILTIN
-#define ONBD_LOWON  0         
+#define ONBD_LOWON 0         
 // PWM Drive
 // d9 needed by RFI scan  d6 would use tmr0 want d3 used by max13855
 #define PWMD_OPIN  9                        // Pin D6
@@ -147,31 +172,6 @@
 ///
 #endif   // PROC_UNO
 
-///
-// ESP Pin Assignments 
-#if PROC_ESP
-// A/D 1v 10b on 
-// Off/On SSR driver GPIO 16 deepWake     
-#define OFFN_OPIN 16
-// Handle either LED polarity with: (1 & ~ONBD_LOWON) for light, (0 | LED_LOWN) for dark 
-#define ONBD_OPIN  0
-#define ONBD_LOWON  1
-// PWM Drive SSR driver GPIO 2 BLed  
-#define PWMD_OPIN  2
-#define PWMD_MODE  OUTPUT
-#define PWMD_FREQ  128
-// spi on ESP FOR tcpl
-#define TCPL_MISO 12  // SPI Mstr In Slve Out 
-#define TCPL_CLCK 14  // SPI SCk
-#define TCPL_CSEL 15  // SPI ChipSel 10K Gnd 
-// PCF8574 ESP: ROTS Rotary 16way encoder switch;
-// i2c on esp for TWIO pcf8574
-#define TWIO_SDA   4     // I2C SDA
-#define TWIO_SCL   5     // I2C SCL
-// 
-#define SCOP_OPIN  13    // debug flag uses 'MOSI' line  
-//
-#endif   // PROC_ESP
 // macros to toggle scope output pin specified above for logic analyser
 #define scopHi digitalWrite( SCOP_OPIN, 1)
 #define scopLo digitalWrite( SCOP_OPIN, 0)
@@ -243,7 +243,7 @@ WebSocketsServer webSocket = WebSocketsServer(5981);
 //  milliSecond poll values Primes to suppress beating 
 #define ADC0_POLL_MILL     2UL           // mill count for A/D 
 #define LCDS_POLL_MSEC  1000UL           // mS lcd display poll
-#define MILL_POLL_USEC  4000UL           // uS 250Hz  mill poll
+#define MILL_POLL_USEC  5000UL           // uS 200Hz  mill poll
 #define PIDC_POLL_MSEC   101UL           // mS pid control poll
 #define PROF_POLL_MSEC   997UL           // mS run control poll
 #define PWMD_POLL_MSEC   103UL           // mS pwm driver  poll
@@ -257,7 +257,7 @@ WebSocketsServer webSocket = WebSocketsServer(5981);
 // milliSecond poll values
 #define ADC0_POLL_MILL     2UL           // mill count for A/D 
 #define LCDS_POLL_MSEC 1000UL            // mS lcd display poll
-#define MILL_POLL_USEC 4000UL            // uS 240Hz mill  poll
+#define MILL_POLL_USEC 5000UL            // uS 200Hz mill  poll
 #define PIDC_POLL_MSEC  100UL            // mS pid control poll
 #define PROF_POLL_MSEC 1000UL            // mS run control poll
 #define PWMD_POLL_MSEC  100UL            // mS pwm driver  poll
@@ -1224,7 +1224,6 @@ void millLoop() {
     millStep += 1;
     millMark +=  MILL_POLL_USEC;
     // mill        
-    // max mill rate 5uSec per on-off
 #if 0
     if ( !(millStep % 1000) )  {
       if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
@@ -1236,22 +1235,22 @@ void millLoop() {
     }
 #endif    
     // every step of mill: checck PWM %  for slow off/on output change 
-    if ( ( pwmdPcnt * 1 )  > ( millStep % 100   ) ) {
+    if ( ( pwmdPcnt * 4 )  > ( millStep % 400 ) ) {
       //use Outp as trig to avoid repeated i/o traffic, set on: offn mark time 
       if (offnOutp == 0) {
         offnOutp = 1;
         offnRctl |=  RCTL_ATTN;  // for virt tcpl
-        digitalWrite( ONBD_OPIN, (1 & ~ONBD_LOWON));
+        //digitalWrite( ONBD_OPIN, (1 & ~ONBD_LOWON));
         if ( offnRctl & RCTL_AUTO) {
           offnDrve ( OFFN_OPIN,   1);
         }  
       }  
     } else {
       if (offnOutp == 1) {
-      //use Outp as trig to avoid repeated i/o traffic, set off: offn space time 
+      //Output Off: use Outp as trig to avoid repeated i/o traffic, set off: offn space time 
         offnOutp = 0;
         offnRctl &= ~RCTL_ATTN;  // for virt tcpl
-        digitalWrite( ONBD_OPIN, (0 | ONBD_LOWON));
+        //digitalWrite( ONBD_OPIN, (0 | ONBD_LOWON));
         if ( offnRctl & RCTL_AUTO) {
           offnDrve ( OFFN_OPIN,   0);
         }
@@ -1259,7 +1258,7 @@ void millLoop() {
     }  
     // flicker tell tale LED in case of fast PWM
     if ( (offnRctl & RCTL_AUTO) && (millStep & 64)) {
-      digitalWrite( ONBD_OPIN, (0 | ONBD_LOWON));
+      //digitalWrite( ONBD_OPIN, (0 | ONBD_LOWON));
     }
     // ESP's A/D converter is <= mill rate: controlled by ACDC_POLL_MILL  
 #if 0   // s.b PROC_ESP
