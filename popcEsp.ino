@@ -97,17 +97,17 @@
 //               Copy from /.arduino15/packages/esp8266/hardware/esp8266/2.3.0/libraries/Ticker/Ticker.h
 //
 //  Code compiler switches: 1/0 Enab/Dsel UNO-ESP proc HW, Wifi options - Rebuild, Upload after changing these 
-#define PROC_ESP      0                  // Compile for ESP8266
-#define PROC_UNO      1                  // Compile for Arduino Uno
+#define PROC_ESP      1                  // Compile for ESP8266
+#define PROC_UNO      0                  // Compile for Arduino Uno
 #define IFAC_ARTI     1                  // Start with Artisan interface on Serial
 #define WITH_LCD      1                  // Hdwre has I2C 2x16 LCD display of either type
-#define WITH_LCD_TYPA 1                  // LCD display type: http://www.yourduino.com/sunshop/index.php?l=product_detail&p=170
-#define WITH_LCD_TYPB 0                  // LCD display type: using https://github.com/marcoschwartz/LiquidCrystal_I2C
-#define WITH_MAX6675  0                  // Hdwre has MAX6675  thermocouple + circuit
+#define WITH_LCD_TYPA 0                  // LCD display type: http://www.yourduino.com/sunshop/index.php?l=product_detail&p=170
+#define WITH_LCD_TYPB 1                  // LCD display type: using https://github.com/marcoschwartz/LiquidCrystal_I2C
 #define WITH_MAX31855 0                  // Hdwre has MAX31855 thermocouple + circuit
-#define WITH_VIRTTCPL 1                  // No hdwre, simulate virtual thermocouple output
+#define WITH_MAX6675  1                  // Hdwre has MAX6675  thermocouple + circuit
+#define WITH_VIRTTCPL 0                  // No hdwre, simulate virtual thermocouple output
 #define WITH_PCF8574  0                  // Hdwre has I2C I/O Extender      
-#define WITH_OFFN     0                  // Use ~250cy via mill Off-On SSR, not fast h/w PWM
+#define WITH_OFFN     1                  // Use ~250cy via mill Off-On SSR, not fast h/w PWM
 #define WITH_WIFI     0                  // Compile for Wifi MQTT clientF
 #define WIFI_MQTT     0                  // Compile for Wifi MQTT clientF
 #define WIFI_SOKS     0                  // Compile for Wifi Web Sckt Srvr
@@ -243,7 +243,7 @@ WebSocketsServer webSocket = WebSocketsServer(5981);
 //  milliSecond poll values Primes to suppress beating 
 #define ADC0_POLL_MILL     2UL           // mill count for A/D 
 #define LCDS_POLL_MSEC  1000UL           // mS lcd display poll
-#define MILL_POLL_USEC 10000UL           // uS 10mSec mill poll
+#define MILL_POLL_USEC  4000UL           // uS 250Hz  mill poll
 #define PIDC_POLL_MSEC   101UL           // mS pid control poll
 #define PROF_POLL_MSEC   997UL           // mS run control poll
 #define PWMD_POLL_MSEC   103UL           // mS pwm driver  poll
@@ -1199,6 +1199,8 @@ void offnDrve ( byte tPin, byte tVal) {
   digitalWrite( tPin, tVal);
 #if WITH_PCF8574
   twioWritePin( OFFN_TWPO, tVal);
+#else 
+  digitalWrite( OFFN_OPIN, tVal);
 #endif  
 }  
 
@@ -1234,7 +1236,7 @@ void millLoop() {
     }
 #endif    
     // every step of mill: checck PWM %  for slow off/on output change 
-    if ( ( pwmdPcnt * 1 )  > ( millStep % 1   ) ) {
+    if ( ( pwmdPcnt * 1 )  > ( millStep % 100   ) ) {
       //use Outp as trig to avoid repeated i/o traffic, set on: offn mark time 
       if (offnOutp == 0) {
         offnOutp = 1;
@@ -1369,7 +1371,7 @@ void pidcDbug() {
 }
 #endif
 
-// Retrieve updated parms from eprom 
+// Read PID Gain parms from Eprom 
 void pidcFprm() {
   byte anewTale = 0;
   Serial.print(F("# New vals from EEPROM:"));
@@ -1445,7 +1447,6 @@ void pidcFprm() {
     anewTale += 1;
   } 
   Serial.print(F("  "));Serial.print( anewTale); Serial.println(F(" new Vals"));
-   
 }
 
 // Serial logout of PID internal values 
@@ -2340,7 +2341,8 @@ void userLoop() {
         }  
       }
       // POPC Cmd : Escape autoArti respond as popC
-      if ((userCmdl[0] == 'P') && (userCmdl[1] == 'O') && (userCmdl[2] == 'P') && (userCmdl[3] == 'C')) {
+      if (  ((userCmdl[0] == 'P') && (userCmdl[1] == 'O') && (userCmdl[2] == 'P') && (userCmdl[3] == 'C')) \
+         || ((userCmdl[0] == 'p') && (userCmdl[1] == 'o') && (userCmdl[2] == 'p') && (userCmdl[3] == 'c')) ) {
         bbrdRctl &= ~RCTL_ARTI; 
         Serial.println(F("# PopC Speak"));
       }
