@@ -108,8 +108,8 @@
 #define WITH_VIRTTCPL 0                  // No hdwre, simulate virtual thermocouple output
 #define WITH_PCF8574  0                  // Hdwre has I2C I/O Extender      
 #define WITH_OFFN     1                  // Use 250mSec cycle via mill Off-On SSR, not fast h/w PWM
-#define WITH_WIFI     0                  // Compile for Wifi MQTT clientF
-#define WIFI_MQTT     0                  // Compile for Wifi MQTT clientF
+#define WITH_WIFI     0                  // Compile for Wifi MQTT client   (needs TickerScheduler,h .c in folder)
+#define WIFI_MQTT     0                  // Compile for Wifi MQTT client
 #define WIFI_SOKS     0                  // Compile for Wifi Web Sckt Srvr
 #define WIFI_WMAN     0                  // Compile for Wifi Manager
 ///
