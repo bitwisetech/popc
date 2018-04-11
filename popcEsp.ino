@@ -681,12 +681,10 @@ void  bbrdArti() {
   artiResp[30] = ' ';
   artiResp[31] = ',';
   artiResp[32] = ' ';
-  //artiResp[33] = '\0';
   artiResp[33] = ' ';
   artiProg[5]  = ',';
   artiProg[11] = ',';
   artiProg[17] = ',';
-  //artiProg[23] = '\0';
   artiProg[23] = ' ';
   artiProg[24] = '\n';
 }  
@@ -1844,7 +1842,7 @@ void pwmdLoop() {
     //
     if ( (pwmdRctl & RCTL_RUNS) == 0) {
       if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-        Serial.print(F("# pwmdRctl==0"));
+        Serial.println(F("# pwmdRctl==0"));
       }  
       pwmdOutp = 0;
     } else {
@@ -1923,7 +1921,7 @@ void rotsLoop() {
         rotsCurr = rotsNewb;
         if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
           Serial.print(F("# Rots:"));
-          Serial.print(rotsCurr);
+          Serial.println(rotsCurr);
         }  
         // manage rotary switch settings
         switch( rotsCurr) {
@@ -2130,7 +2128,6 @@ float virtTcplLoop() {
   int   vMSecSmpl;
   vMSecSmpl = millis() - vPrvMSec;
   if ( vMSecSmpl < 100 ) {
-    //Serial.println(F("vNyet"));
 	return ( int(vTmpDegC));
   } else {
     vPrvMSec  = millis();  
@@ -2284,7 +2281,8 @@ void userLoop() {
           Serial.println(F("RESET"));
         }
         // PID;START
-        if ((userCmdl[4] == 'S') && (userCmdl[5] == 'T') && (userCmdl[6] == 'A')) {
+        if (  ((userCmdl[4] == 'S') && (userCmdl[5] == 'T') && (userCmdl[6] == 'A')) \
+            ||((userCmdl[4] == 'G') && (userCmdl[5] == 'O') )  ){
           pidcStrt();
           Serial.println(F("START"));
         }  
@@ -2838,6 +2836,5 @@ void loop() {
   webSocket.loop(); 
 #endif  // WIFI_SOKS
 #endif  // PROC_ESP && WITH_WIFI
-  //frntLoop();
   // Why     delay(10);
 }
