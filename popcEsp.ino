@@ -101,15 +101,15 @@
 #define PROC_UNO      0                  // Compile for Arduino Uno
 #define IFAC_ARTI     1                  // Start with Artisan interface on Serial
 #define WITH_LCD      1                  // Hdwre has I2C 2x16 LCD display of either type
-#define WITH_LCD_TYPA 1                  // LCD display type: http://www.yourduino.com/sunshop/index.php?l=product_detail&p=170
-#define WITH_LCD_TYPB 0                  // LCD display type: using https://github.com/marcoschwartz/LiquidCrystal_I2C
+#define WITH_LCD_TYPA 0                  // LCD display type: http://www.yourduino.com/sunshop/index.php?l=product_detail&p=170
+#define WITH_LCD_TYPB 1                  // LCD display type: using https://github.com/marcoschwartz/LiquidCrystal_I2C
 #define WITH_MAX31855 0                  // Hdwre has MAX31855 thermocouple + circuit
 #define WITH_MAX6675  1                  // Hdwre has MAX6675  thermocouple + circuit
 #define WITH_VIRTTCPL 0                  // No hdwre, simulate virtual thermocouple output
 #define WITH_PCF8574  0                  // Hdwre has I2C I/O Extender      
 #define WITH_OFFN     1                  // Use 250mSec cycle via mill Off-On SSR, not fast h/w PWM
-#define WITH_WIFI     1                  // Compile for Wifi MQTT client (must have TickerScheduler.h .c in folder)
-#define WIFI_MQTT     1                  // Compile for Wifi MQTT client
+#define WITH_WIFI     0                  // Compile for Wifi MQTT client (must have TickerScheduler.h .c in folder)
+#define WIFI_MQTT     0                  // Compile for Wifi MQTT client
 #define WIFI_SOKS     0                  // Compile for Wifi Web Sckt Srvr
 #define WIFI_WMAN     0                  // Compile for Wifi Manager
 ///
@@ -182,9 +182,11 @@
 #include <Adafruit_ESP8266.h>
 //
 // upward wifi: replace with your own network router's SSID, Password
+//
 const char* upwdSsid = "myRouterAddx";
+//
 const char* upwdPswd = "myRouterPswd";
-// downward wifi: for esp8266 access point replace with AP's SSID, Password
+// downward wifi: for Esp8266 as an Access Point replace with AP's SSID, Password
 //const char* dnwdSsid = "myAPsSSID";
 //const char* dnwdPswd = "myAPsPswd";
 //
@@ -211,10 +213,10 @@ const char* upwdPswd = "myRouterPswd";
 #define MQCL_ID "popc"
 //  Mqtt
 // create MQTT object with IP address, port of MQTT broker e.g.mosquitto application
-// MQTT 
+// MQTT myMqtt(MQCL_ID, "ip.addx.ofPCwith.MQTTBroker", brokerOnPortNum);
+// 
 MQTT popcMqtt(MQCL_ID, "test.mosquitto.org", 1883);
 //
-// MQTT popcMqtt(MQCL_ID, "myPCwithPaho", 1883);
 #endif  // WIFI_MQTT
 
 //Jn01 WifiManager 
@@ -255,7 +257,7 @@ WebSocketsServer webSocket = WebSocketsServer(5981);
 //
 #if 0
 // milliSecond poll values
-#define ADC0_POLL_MILL     2UL           // mill count for A/D 
+#define ADC0_POLL_MILL    2UL            // mill count for A/D 
 #define LCDS_POLL_MSEC 1000UL            // mS lcd display poll
 #define MILL_POLL_USEC 5000UL            // uS 200Hz mill  poll
 #define PIDC_POLL_MSEC  100UL            // mS pid control poll
@@ -344,8 +346,6 @@ long adc0Curr, adc0Prev, adc0Maxi, adc0Mini, adc0Avge, adc0Bit0;
 
 // Artisan 40+ char serial pkt: ambient, ch1, ch2, ch3, ch4 or Logging Tt Ts BT ET SV Duty
 char artiResp[] = "023.0,128.8,138.8,000.0,000.0          ";  // 39 + null
-// buffer for mqtt Artisan Program interface
-char artiProg[] = "                        ";  // 23 + null
 // Artisan csv header format: these two lines must contain tab chars, not spaces
 const char csvlLin1[] = "Date:	Unit:C	CHARGE:	TP:	DRYe:	FCs:	FCe:	SCs:	SCe:	DROP:	COOL:	Time:";
 const char csvlLin2[] = "Time1	Time2	BT	ET	Event	SV	DUTY";
@@ -389,15 +389,12 @@ int eprmSize, eprmFree;
 // mqtt strings are declared for both ESP8266 and UNO 
 char mqttVals[] =  "                ";                     // mqtt value 16sp 15ch max
 // General Info topics 
-const char adc0Tops[]  = "/popc/adc0Curr";
 const char c900Tops[]  = "/popc/cbck9000";
 const char echoTops[]  = "/popc/echoCmdl";
 const char inf0Tops[]  = "/popc/bbrdLin0";
 const char inf1Tops[]  = "/popc/bbrdLin1";
 const char psecTops[]  = "/popc/stepSecs";
-const char dutyTops[]  = "/popc/pwmdDuty";
 const char freqTops[]  = "/popc/pwmdFreq";
-const char ptmpTops[]  = "/popc/profDegs";
 const char dgpmTops[]  = "/popc/sensDgpm";
 const char userTops[]  = "/popc/userCmdl";
 // Artisan interface UC names  'Read' Cmd; Send Ambient:Targ:Sens:Prof:Duty
@@ -410,17 +407,6 @@ const char PwmdTops[]  = "/popc/arti/Pwmd";
 const char AOT1Tops[]  = "/popc/arti/AOT1";
 const char AOT2Tops[]  = "/popc/arti/AOT2";
 const char AIO3Tops[]  = "/popc/arti/AIO3";
-// PID controller topics
-const char RnTops[]    = "/popc/pidc/Rn";
-const char YnTops[]    = "/popc/pidc/Yn";
-const char EnTops[]    = "/popc/pidc/En";
-const char UnTops[]    = "/popc/pidc/Un";
-const char KpTops[]    = "/popc/pidc/Kp";
-const char TdTops[]    = "/popc/pidc/Td";
-const char TiTops[]    = "/popc/pidc/Ti";
-const char BetaTops[]  = "/popc/pidc/Beta";
-const char GammaTops[] = "/popc/pidc/Gamma";
-const char KappaTops[] = "/popc/pidc/Kappa";
 
 //pidc
 //Ap15
@@ -656,23 +642,13 @@ void  bbrdArti() {
     dtostrf( floatCtoF(targTmpC), 5, 1,  &artiResp[6]  );               // ET
     dtostrf( floatCtoF(sensTmpC), 5, 1, &artiResp[12] );                // BT
     dtostrf( int(sensCdpm * 9.00 / 5.00 + 0 ), 5, 1, &artiResp[18] );   // CDpm CDpm + no offset
-    //dtostrf( int(sensCdpm * 9.00 / 5.00 + 335 ), 5, 1, &artiResp[18] ); // CDpm CDpm + offset for centered Artisan plot
-    // MQTT response fields
-    dtostrf( floatCtoF(targTmpC), 5, 1,  &artiProg[0]  );               // Art's Ta Ch
-    dtostrf( floatCtoF(sensTmpC), 5, 1,  &artiProg[6]  );               // ET
-    dtostrf( int(sensCdpm * 9.00 / 5.00      ), 5, 1, &artiProg[12] );  // CDpm  
   } else {
     dtostrf(           ambiTmpC,  5, 1, &artiResp[0]  );                // AT
     dtostrf(           targTmpC,  5, 1, &artiResp[6]  );                // ET
     dtostrf(           sensTmpC,  5, 1, &artiResp[12] );                // BT
     dtostrf( int(sensCdpm + 0 ), 5, 1, &artiResp[18] );                 // CDpm + no offset 
-    //dtostrf( int(sensCdpm + 130 ), 5, 1, &artiResp[18] );               // CDpm + offset for centered Artisan plot
-    dtostrf(           targTmpC,  5, 1, &artiProg[0]  );                // ET
-    dtostrf(           sensTmpC,  5, 1, &artiProg[6] );                 // BT
-    dtostrf( int(sensCdpm      ), 5, 1, &artiProg[12] );                // CDpm
   } 
   dtostrf(           pwmdPcnt,  5, 1, &artiResp[24] );                  // DUTY
-  dtostrf(           pwmdPcnt,  5, 1, &artiProg[18] );                  // DUTY
   // Add commas, eof to response fields  
   artiResp[5]  = ',';
   artiResp[11] = ',';
@@ -683,11 +659,6 @@ void  bbrdArti() {
   artiResp[31] = ',';
   artiResp[32] = ' ';
   artiResp[33] = ' ';
-  artiProg[5]  = ',';
-  artiProg[11] = ',';
-  artiProg[17] = ',';
-  artiProg[23] = ' ';
-  artiProg[24] = '\n';
 }  
 
 //
@@ -928,9 +899,9 @@ void discCbck() {
   }  
   #if WIFI_MQTT 
   popcMqtt.connect();
-  delay(2000);
+  delay(8000);
   if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-    Serial.println(F("# Mqtt.connect timeOut"));
+    Serial.println(F("# discCbck: Mqtt.connect timeOut"));
   }  
   //Je18     
   popcSubs();
@@ -1051,7 +1022,7 @@ void wrapPubl( const char * tTops , const char * tVals, int tInt ) {
   //delay(100);
 }    
 
-//pupSub / ESP ticker callbacks and service 
+/// ESP TickerScheduler callbacks and service functions 
 void cbck1000() {
   cb10Rctl |= RCTL_ATTN;
 }
@@ -1064,11 +1035,11 @@ void cb10Svce() {
   wrapPubl( (const char * )inf1Tops, (const char * )(bbrdLin1), sizeof(bbrdLin1) ); 
   //
   dtostrf( adc0Curr, 8, 3, mqttVals);
-  wrapPubl( (const char * )adc0Tops , (const char * )mqttVals, sizeof(mqttVals) ); 
-  wrapPubl( (const char * )ArspTops , (const char * )artiProg, sizeof(artiProg) ); 
+  wrapPubl( (const char * )ArspTops , (const char * )artiResp, sizeof(artiResp) ); 
   cb10Rctl &= ~RCTL_ATTN;
 }
 
+// Every 2sec Callback ans Service 
 void cbck2000() {
   cb20Rctl |= RCTL_ATTN;
 }
@@ -1102,7 +1073,6 @@ void cb20Svce() {
   } else {
     dtostrf(           holdTmpC , 5, 1, mqttVals);
 	}		
-  wrapPubl( (const char * )ptmpTops , (const char * )mqttVals, sizeof(mqttVals) ); 
   wrapPubl( (const char * )PTmpTops , (const char * )mqttVals, sizeof(mqttVals) ); 
   //
   if ( userScal == fahrScal) {
@@ -1113,23 +1083,10 @@ void cb20Svce() {
   wrapPubl( (const char * )dgpmTops , (const char * )mqttVals, sizeof(mqttVals) ); 
   //
   dtostrf(             pwmdPcnt , 5, 1, mqttVals);
-  wrapPubl( (const char * )dutyTops , (const char * )mqttVals, sizeof(mqttVals) ); 
   wrapPubl( (const char * )PwmdTops , (const char * )mqttVals, sizeof(mqttVals) ); 
   //
   dtostrf( stepSecs, 8, 3, mqttVals);
   wrapPubl( psecTops, (const char * )(mqttVals), sizeof(mqttVals) );
-  //
-  dtostrf( pidcRn, 8, 3, mqttVals);
-  wrapPubl( (const char * )RnTops , (const char * )mqttVals, sizeof(mqttVals) ); 
-  //
-  dtostrf( pidcYn, 8, 3, mqttVals);
-  wrapPubl( (const char * )YnTops, (const char * )(mqttVals), sizeof(mqttVals) ); 
-  //
-  dtostrf( pidcEn, 8, 3, mqttVals);
-  wrapPubl( (const char * )EnTops, (const char * )(mqttVals), sizeof(mqttVals) ); 
-  //
-  dtostrf( pidcUn, 8, 3, mqttVals);
-  wrapPubl( (const char * )UnTops, (const char * )(mqttVals), sizeof(mqttVals) ); 
   //
   cb20Rctl &= ~RCTL_ATTN;
 }
@@ -1143,34 +1100,10 @@ void cb90Svce() {
   dtostrf( pidcElap, 12, 3, mqttVals);
   wrapPubl( c900Tops, (const char *)(mqttVals), sizeof(mqttVals) ); 
   //
-  dtostrf( pidcKp, 8, 3, mqttVals);
-  wrapPubl( KpTops,   (const char *)(mqttVals), sizeof(mqttVals) ); 
-  //
-  dtostrf( pidcTi, 8, 3, mqttVals);
-  wrapPubl( TiTops,   (const char *)(mqttVals), sizeof(mqttVals) ); 
-  //
-  dtostrf( pidcTd, 8, 3, mqttVals);
-  wrapPubl( TdTops,   (const char *)(mqttVals), sizeof(mqttVals) ); 
-  //
-  dtostrf( pidcBeta, 8, 3, mqttVals);
-  wrapPubl( BetaTops, (const char * )(mqttVals), sizeof(mqttVals) ); 
-  //
-  dtostrf( pidcGamma, 8, 3, mqttVals);
-  wrapPubl( GammaTops, (const char * )(mqttVals), sizeof(mqttVals) ); 
-  //
-  dtostrf( pidcKappa, 8, 3, mqttVals);
-  wrapPubl( KappaTops, (const char * )(mqttVals), sizeof(mqttVals) ); 
-  //
-  if ( userScal == fahrScal) {
-    dtostrf( floatCtoF(holdTmpC), 8, 3, mqttVals);
-  } else {
-    dtostrf(           holdTmpC,  8, 3, mqttVals);
-  }  
-  wrapPubl( (const char * )ptmpTops, (const char *)(mqttVals), sizeof(mqttVals) ); 
   cb90Rctl &= ~RCTL_ATTN;
 }  
   
-//
+// Wrapper for common MQTT subscribe functions 
 void wrapSubs( const char * tTops ) {
   int rCode = 999;
 #if PROC_ESP  
@@ -1182,14 +1115,9 @@ void wrapSubs( const char * tTops ) {
   //delay(100);
 }    
 
-//
+//  Subscribe to MQTT topics, using wrapper
 void popcSubs() {
   int rCode = 0;
-  wrapSubs( KpTops );
-  wrapSubs( TiTops );
-  wrapSubs( TdTops );
-  wrapSubs( BetaTops );
-  wrapSubs( GammaTops );
   wrapSubs( userTops );
 }  
 
@@ -2776,7 +2704,7 @@ void setup() {
     popcMqtt.connect();
     delay(8000);
     if ( !( bbrdRctl & RCTL_ARTI ) ) {
-      Serial.println(F("# Wifi Mqtt.connect timed out. calling popcSubs()"));
+      Serial.println(F("# setup() Mqtt.connect timeout. calling popcSubs()"));
     }  
     //
     popcSubs();
