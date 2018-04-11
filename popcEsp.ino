@@ -681,11 +681,13 @@ void  bbrdArti() {
   artiResp[30] = ' ';
   artiResp[31] = ',';
   artiResp[32] = ' ';
-  artiResp[33] = '\0';
+  //artiResp[33] = '\0';
+  artiResp[33] = ' ';
   artiProg[5]  = ',';
   artiProg[11] = ',';
   artiProg[17] = ',';
-  artiProg[23] = '\0';
+  //artiProg[23] = '\0';
+  artiProg[23] = ' ';
   artiProg[24] = '\n';
 }  
 
@@ -1234,7 +1236,9 @@ void millLoop() {
       }
     }
 #endif    
-    // every step of mill: checck PWM %  for slow off/on output change 
+    //  Every step of mill: checck PWM %  for slow off/on output change
+    //    Mill step * 400 is 2000mSec cycle (100% PWM), 1%PWM is 4 * Steps
+    //    Writes to flicker onboard LED disabled, interfere if using as output    
     if ( ( pwmdPcnt * 4 )  > ( millStep % 400 ) ) {
       //use Outp as trig to avoid repeated i/o traffic, set on: offn mark time 
       if (offnOutp == 0) {
@@ -2771,7 +2775,7 @@ void setup() {
       Serial.println(F("# WIFI_MQTT : call popcMgtt.Connect()"));
     }  
     popcMqtt.connect();
-    delay(18000);
+    delay(8000);
     if ( !( bbrdRctl & RCTL_ARTI ) ) {
       Serial.println(F("# Wifi Mqtt.connect timed out. calling popcSubs()"));
     }  
