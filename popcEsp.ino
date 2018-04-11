@@ -101,15 +101,15 @@
 #define PROC_UNO      0                  // Compile for Arduino Uno
 #define IFAC_ARTI     1                  // Start with Artisan interface on Serial
 #define WITH_LCD      1                  // Hdwre has I2C 2x16 LCD display of either type
-#define WITH_LCD_TYPA 0                  // LCD display type: http://www.yourduino.com/sunshop/index.php?l=product_detail&p=170
-#define WITH_LCD_TYPB 1                  // LCD display type: using https://github.com/marcoschwartz/LiquidCrystal_I2C
+#define WITH_LCD_TYPA 1                  // LCD display type: http://www.yourduino.com/sunshop/index.php?l=product_detail&p=170
+#define WITH_LCD_TYPB 0                  // LCD display type: using https://github.com/marcoschwartz/LiquidCrystal_I2C
 #define WITH_MAX31855 0                  // Hdwre has MAX31855 thermocouple + circuit
 #define WITH_MAX6675  1                  // Hdwre has MAX6675  thermocouple + circuit
 #define WITH_VIRTTCPL 0                  // No hdwre, simulate virtual thermocouple output
 #define WITH_PCF8574  0                  // Hdwre has I2C I/O Extender      
 #define WITH_OFFN     1                  // Use 250mSec cycle via mill Off-On SSR, not fast h/w PWM
-#define WITH_WIFI     0                  // Compile for Wifi MQTT client   (needs TickerScheduler,h .c in folder)
-#define WIFI_MQTT     0                  // Compile for Wifi MQTT client
+#define WITH_WIFI     1                  // Compile for Wifi MQTT client (must have TickerScheduler.h .c in folder)
+#define WIFI_MQTT     1                  // Compile for Wifi MQTT client
 #define WIFI_SOKS     0                  // Compile for Wifi Web Sckt Srvr
 #define WIFI_WMAN     0                  // Compile for Wifi Manager
 ///
@@ -212,7 +212,7 @@ const char* upwdPswd = "myRouterPswd";
 //  Mqtt
 // create MQTT object with IP address, port of MQTT broker e.g.mosquitto application
 // MQTT 
-myMqtt(MQCL_ID, "test.mosquitto.org", 1883);
+MQTT popcMqtt(MQCL_ID, "test.mosquitto.org", 1883);
 //
 // MQTT popcMqtt(MQCL_ID, "myPCwithPaho", 1883);
 #endif  // WIFI_MQTT
@@ -526,9 +526,10 @@ byte  rampRctl  = 0x00;
 byte  holdRctl  = 0x00;
 byte  tcplRctl  = RCTL_RUNS;
 byte  userRctl  = RCTL_RUNS;
-byte  wifiRctl  = 0x00;
 #if WITH_WIFI
 byte  wifiRctl  = RCTL_RUNS;
+#else
+byte  wifiRctl  = 0x00;
 #endif
 
 // scheduler tick callback attn flags 
