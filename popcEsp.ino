@@ -2614,6 +2614,7 @@ void setup() {
   userInit();
   tcplInit();
   pidcInit();
+  pidcStop();
   pwmdInit();
   millInit();
   profInit();
