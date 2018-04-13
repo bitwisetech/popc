@@ -1936,6 +1936,13 @@ void tcplInit() {
   tcpl.begin();
 #endif
 #endif
+// MAX6675 needs begin()
+#if WITH_MAX6675
+  //: begin(TCPL_CSEL) forces H/W SPI
+  tcpl.begin(TCPL_CSEL);
+  //  use, instead, below: begin(TCPL_CLCK, TCPL_CSEL, TCPL_CSEL)  For S/W SPI 
+  //  tcpl.begin(TCPL_CLCK, TCPL_CSEL, TCPL_CSEL);
+#endif  
   tcplMark = millis() + TCPL_POLL_MSEC;
   vtcpMark = millis() + VTCP_POLL_MSEC;
   sensTmpC = ambiTmpC;
@@ -1957,6 +1964,7 @@ void tcplRealLoop() {
       // Read thermocouple 
 #if (PROC_UNO || WITH_MAX6675)
       tcplTmpC = tcpl.readCelsius();
+      // Serial.print("# tcplLoop() readCelsius:"); Serial.print(tcplTmpC);
 #endif
 #if ( PROC_ESP && WITH_MAX31855 ) 
       // read() gets both status and temp 
