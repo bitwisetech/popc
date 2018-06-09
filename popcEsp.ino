@@ -78,36 +78,31 @@
 //  along with this program; if not, write to the Free Software                    
 // .Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA 
 //
-/// Hardware pin assignments
-//
-//  nano: Ser:0,1  ExtInt:2 PWM:9,10(490HzTmr1) 3,11(490HzTmr2) PWM:5,6 (980HzTmr0 + mS, delay)
-//        SPI:10,11,12,13 I2C SDA:A4 SCL:A5 LED:13
-//
 /// Compiling this sketch
-//    for UNO
-//      Set '1' compile-time switches, below:  PROC_UNO, ( set unused switches to '0')
 //    for ESP8266   
 //      Setup your Arduino IDE for ESP8266, see www.adafruit.com and install board support package
 //      Get the ESP TickerScheduler package, copy TickerScheduler.* into the same folder as this sketch, not into library folder.
 //      Set '1' compile-time switches, below:  PROC_ESP           ( set unused switches to '0')
+//    for UNO
+//      Set '1' compile-time switches, below:  PROC_UNO, ( set unused switches to '0')
 //    for either processor 
-//      Set '1' compile-time switches, below:  WITH_LCD, WITH_MAX31855, WITH_PCF8574 if you have that hardware
+//      Set '1' compile-time switches, below:  WITH_LCD, WITH_MAX31855, WITH_MAX6675, WITH_PCF8574 if you have that hardware
 //      Your sketchbook/library must contain libraries:  LiquidCrystal, Adafruit_MAX31855_library (for UNO), MAX31855 (for ESP), PCF8574 as needed
 //      For ESP: Adafruit_ESP8266 plus libraries for wifi as selected: esp-mqtt-arduino, WiFiManager, WebSockets  ( not all wifi options tested ! ) 
 //               Copy from /.arduino15/packages/esp8266/hardware/esp8266/2.3.0/libraries/Ticker/Ticker.h
 //
 //  Code compiler switches: 1/0 Enab/Dsel UNO-ESP proc HW, Wifi options - Rebuild, Upload after changing these 
 #define PROC_ESP      0                  // Compile for ESP8266
-#define PROC_NMCU     1                  // Compile for ESP with NodeMCU pins
-#define PROC_UNO      0                  // Compile for Arduino Uno
-#define IFAC_ARTI     1                  // Start with Artisan interface on Serial
+#define PROC_NMCU     0                  // Compile for ESP with NodeMCU pins
+#define PROC_UNO      1                  // Compile for Arduino Uno
+#define IFAC_ARTI     0                  // Start with Artisan interface on Serial
 #define WITH_LCD      1                  // Hdwre has I2C 2x16 LCD display of either type
-#define WITH_MAX31855 0                  // Hdwre has MAX31855 thermocouple + circuit
-#define WITH_MAX6675  1                  // Hdwre has MAX6675  thermocouple + circuit
-#define WITH_TCPL_2   1                  // Second Thermocouple MUST be same type ( libraies conflict ) 
+#define WITH_MAX31855 1                  // Hdwre has MAX31855 thermocouple + circuit
+#define WITH_MAX6675  0                  // Hdwre has MAX6675  thermocouple + circuit
+#define WITH_TCPL_2   0                  // Second Thermocouple MUST be same type ( libraies conflict ) 
 #define WITH_VIRTTCPL 0                  // No hdwre, simulate virtual thermocouple output
 #define WITH_PCF8574  0                  // Hdwre has I2C I/O Extender      
-#define WITH_OFFN     1                  // Use 250mSec cycle via mill Off-On SSR, not fast h/w PWM
+#define WITH_OFFN     0                  // Use 250mSec cycle via mill Off-On SSR, not fast h/w PWM
 #define WITH_WIFI     0                  // Compile for Wifi MQTT client (must have TickerScheduler.h .c in folder)
 #define WIFI_MQTT     0                  // Compile for Wifi MQTT client
 #define WIFI_SOKS     0                  // Compile for Wifi Web Sckt Srvr
@@ -594,10 +589,7 @@ unsigned long tcp2Mark = 0UL;
 //
 
 #if ( PROC_ESP && WITH_WIFI)
-
-
-
-
+//
 #include "TickerScheduler.h"
 // scheduler tick callback flags use Attn bit for service request 
 byte  cb10Rctl  = RCTL_RUNS;
@@ -733,7 +725,7 @@ void wifsInit() {
     webSocket.begin();
     //    webSocket.setAuthorization("user", "Password"); // HTTP Basic Authorization
     webSocket.onEvent(webSocketEvent);
-#else
+#else // No SOCKS
     //  Wifi Setup 
     while (WiFi.status() != WL_CONNECTED) {
       if ( (bbrdRctl & RCTL_ARTI) == 0) {
@@ -749,7 +741,8 @@ void wifsInit() {
       Serial.println(F("# WiFi connected as local IP:"));
       Serial.println(WiFi.localIP());
     }
-#endif // WIFI_SOKS
+#endif // WIFIMAN
+//
 #if WIFI_MQTT
     //  MQTT Setup 
     //    setup callbacks
@@ -896,12 +889,14 @@ void mavsInit() {
 
 //
 int wrapIndx ( int iIndx, int iTale) {
-  int iResp = iIndx; 
-  // Returns Index number tDisp above/below tFrom with wrap around based on tTale: array length
-  while (iResp >= iTale) { iResp -= iTale;}
-  while (iResp <  0    ) { iResp += iTale;}
-  //Serial.println(iResp);
-  return(iResp);
+  // Returns Index number above/below tIndx with wrap around based on tTale: array length
+  if (iIndx >= iTale) { 
+    return(iIndx - iTale);
+  } else if (iIndx <  0    ) { 
+    return(iIndx + iTale);
+  } else {
+    return(iIndx);
+  }
 }
 
 // Returns incremental change in moving average, supplied index of new latest value in history 
@@ -3156,7 +3151,7 @@ void userLoop() {
         Serial.println(F("#w"));
       }
     }
-    // q query readback PID operating parameters
+    // q query readback PID operatL857ing parameters
     if (userCmdl[0] == 'q') {
       pidcInfo();
     }
