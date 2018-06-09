@@ -59,7 +59,7 @@
 //  v/V     Readback Version, PID, EEPROM to serial / EPROM => PID Values
 //  wnn/Wnn Set PWM Duty Cycle nn <= 100, disable PID
 //  x/X     Rdbk/Write PID XVal: Steady temp with   0% pwm 
-//  y/Y     Live Sync PID to current power setting
+//  y/Y     Live Sync PID to current power setting / ESP restart
 //  z/Z     Zero reset all timecounts
 //
 //  Copyright (c) 2017 2018 Bitwise Technologies  popc@bitwisetech.com  
@@ -97,7 +97,8 @@
 //               Copy from /.arduino15/packages/esp8266/hardware/esp8266/2.3.0/libraries/Ticker/Ticker.h
 //
 //  Code compiler switches: 1/0 Enab/Dsel UNO-ESP proc HW, Wifi options - Rebuild, Upload after changing these 
-#define PROC_ESP      1                  // Compile for ESP8266
+#define PROC_ESP      0                  // Compile for ESP8266
+#define PROC_NMCU     1                  // Compile for ESP with NodeMCU pins
 #define PROC_UNO      0                  // Compile for Arduino Uno
 #define IFAC_ARTI     1                  // Start with Artisan interface on Serial
 #define WITH_LCD      1                  // Hdwre has I2C 2x16 LCD display of either type
@@ -118,7 +119,7 @@
 //
 ///
 // ESP Pin Assignments 
-#if PROC_ESP
+#if (PROC_ESP && !PROC_NMCU)
 // A/D 1v 10b on 
 // Off/On SSR driver GPIO 16 deepWake     
 #define OFFN_OPIN  16
@@ -143,7 +144,43 @@
 // 
 #define SCOP_OPIN  13    // debug flag uses 'MOSI' line  
 //
-#endif   // PROC_ESP
+#endif   // PROC_ESP Non PROC_NMCU
+///
+#if PROC_NMCU
+// A/D 1v 10b on 
+// Off/On SSR driver GPIO 16 deepWake     +
+#define OFFN_OPIN  10
+// Handle either LED polarity with: (1 & ~ONBD_LOWON) for light, (0 | LED_LOWN) for dark 
+#define ONBD_OPIN   0
+#define ONBD_LOWON  1
+// PWM Drive SSR driver GPIO 2 BLed  
+#define PWMD_OPIN   9
+#define PWMD_MODE  OUTPUT
+#define PWMD_FREQ 128
+// Rotary 16way encoder switch; D13 is LED on UNO 
+#define ROTS_BIT3   3                        // Pin Val 8 
+#define ROTS_BIT2   2                        // Pin Val 4 
+#define ROTS_BIT1   1                        // Pin Val 2 
+#define ROTS_BIT0   0                        // Pin Val 1 
+// Ensure for direct connected pins in Init(), Valu()
+#define PINS_ROTS   1
+// spi on ESP FOR tcpl
+#define TCPL_MISO  12  // SPI Mstr In Slve Out 
+#define TCPL_CLCK  14  // SPI SCk
+#define TCPL_CSEL  15  // SPI ChipSel 10K Gnd 
+#if WITH_TCPL_2
+#define TCPL_CSL2   0  // SPI ChipSel 10K Gnd 
+#endif
+// PCF8574 ESP: ROTS Rotary 16way encoder switch;
+// i2c on esp for TWIO pcf8574
+#define TWIO_SDA    4     // I2C SDA
+#define TWIO_SCL    5     // I2C SCL
+// 
+#define SCOP_OPIN  13    // debug flag uses 'MOSI' line  
+// ensure ESP selections are active
+#define PROC_ESP    1
+//
+#endif   // PROC_NMCU
 ///
 // UNO pin assignments
 #if PROC_UNO
@@ -162,6 +199,8 @@
 #define ROTS_BIT2 10                        // Pin Val 4 
 #define ROTS_BIT1 11                        // Pin Val 2 
 #define ROTS_BIT0 12                        // Pin Val 1 
+// Ensure for direct connected pins in Init(), Valu()
+#define PINS_ROTS  1
 // spi2 on UNO for alternative tcpl interface  (excludes twio)
 #define SPI2_CLCK  3                        // Pin Clock
 #define SPI2_MISO  5                        // (Pin D4 used for TCPL)
@@ -546,7 +585,7 @@ byte rotsCurr, rotsNewb, offnOutp;              // Current value, newb test for 
 #if PROC_ESP
 unsigned long adc0Mark, adc0Poll                               = 0UL;
 #endif
-unsigned long pidcPoll                                         = 0UL;
+float         pidcPoll                                         = 0UL;
 unsigned long lcdsMark, millStep, millMark,           pidcMark = 0UL;
 unsigned long profMark, pwmdMark, rotsMark, tcplMark, vtcpMark = 0UL;
 #if WITH_TCPL_2
@@ -1630,66 +1669,32 @@ void pidcDbug() {
 }
 #endif
 
+int anewFprm( int eadx, float *targ, char *titl) {
+  float fromEprm;
+  EEPROM.get (eadx, fromEprm ); 
+  if ( !( fromEprm == *targ)){
+    if ( !( bbrdRctl & RCTL_ARTI ) ) {
+      Serial.print(titl); Serial.print(fromEprm);
+    }
+    *targ = fromEprm;
+    return(1);
+  } else {
+    return(0);  
+  }
+}
+
 // Read PID Gain parms from Eprom 
 void pidcFprm() {
   byte anewTale = 0;
-  float fromEprm;
   if ( !( bbrdRctl & RCTL_ARTI )) {
     Serial.print(F("# New vals from EEPROM:"));
   }
-  EEPROM.get( EADX_KP, fromEprm);
-  if ( pidcKp != fromEprm) {
-    if ( !( bbrdRctl & RCTL_ARTI ) ) {
-      Serial.print(F("Kp:")); Serial.print(fromEprm);
-    }
-    pidcKp = fromEprm;
-    anewTale += 1;
-  }
-  //
-  EEPROM.get( EADX_TI, fromEprm);
-  if ( pidcTi != fromEprm) {
-    if ( !( bbrdRctl & RCTL_ARTI ) ) {
-      Serial.print(F(" Ti:")); Serial.print(fromEprm);
-    }
-    pidcTi =  fromEprm; 
-    anewTale += 1;
-  }
-  //
-  EEPROM.get( EADX_TD, fromEprm);
-  if ( pidcTd != fromEprm) {
-    if ( !( bbrdRctl & RCTL_ARTI ) ) {
-      Serial.print(F(" Td:")); Serial.print(fromEprm);
-    }
-    pidcTd = fromEprm; 
-    anewTale += 1;
-  }
-  //
-  EEPROM.get( EADX_CT, fromEprm);
-  if ( pidcPoll != int(fromEprm)) {
-    if ( !( bbrdRctl & RCTL_ARTI ) ) {
-      Serial.print(F(" CT:")); Serial.print(fromEprm);
-    }
-    pidcPoll = int(fromEprm); 
-    anewTale += 1;
-  }
-  //
-  EEPROM.get( EADX_BE, fromEprm);
-  if ( pidcBeta != fromEprm) {
-    if ( !( bbrdRctl & RCTL_ARTI ) ) {
-      Serial.print(F(" Be:")); Serial.print(fromEprm);
-    }
-    pidcBeta = fromEprm; 
-    anewTale += 1;
-  }
-  //
-  EEPROM.get( EADX_KA, fromEprm);
-  if ( pidcKappa != fromEprm) {
-    if ( !( bbrdRctl & RCTL_ARTI ) ) {
-      Serial.print(F(" Ka:")); Serial.print(fromEprm);
-    }
-    pidcKappa = fromEprm; 
-    anewTale += 1;
-  }
+  anewTale += anewFprm( EADX_KP, &pidcKp,   ("Kp: "));
+  anewTale += anewFprm( EADX_TI, &pidcTi,   ("Ti: "));
+  anewTale += anewFprm( EADX_TD, &pidcTd,   ("Td: "));
+  anewTale += anewFprm( EADX_CT, &pidcPoll, ("Ct: "));
+  anewTale += anewFprm( EADX_BE, &pidcBeta, ("Be: "));
+  anewTale += anewFprm( EADX_KA, &pidcKappa,("Ka: "));
   //
   if ( !( bbrdRctl & RCTL_ARTI ) ) {
     Serial.print(F("  "));Serial.print( anewTale); Serial.println(F(" new Vals"));
@@ -2109,7 +2114,7 @@ void pwmdLoop() {
 int rotsValu() {
   byte resp, tVal;
   resp = 0;
-#if PROC_UNO
+#if PINS_ROTS
   if ( digitalRead(ROTS_BIT3) == LOW  ) resp  = 8; 
   if ( digitalRead(ROTS_BIT2) == LOW  ) resp += 4; 
   if ( digitalRead(ROTS_BIT1) == LOW  ) resp += 2; 
@@ -2127,7 +2132,7 @@ int rotsValu() {
     
 void rotsInit() {
   // Set pins to weak pullup 
-#if PROC_UNO
+#if PINS_ROTS
   pinMode( ROTS_BIT3, INPUT_PULLUP);
   pinMode( ROTS_BIT2, INPUT_PULLUP);
   pinMode( ROTS_BIT1, INPUT_PULLUP);
