@@ -93,16 +93,16 @@
 //
 //  Code compiler switches: 1/0 Enab/Dsel UNO-ESP proc HW, Wifi options - Rebuild, Upload after changing these 
 #define PROC_ESP      0                  // Compile for ESP8266
-#define PROC_NMCU     0                  // Compile for ESP with NodeMCU pins
-#define PROC_UNO      1                  // Compile for Arduino Uno
-#define IFAC_ARTI     0                  // Start with Artisan interface on Serial
+#define PROC_NMCU     1                  // Compile for ESP with NodeMCU pins
+#define PROC_UNO      0                  // Compile for Arduino Uno
+#define IFAC_ARTI     1                  // Start with Artisan interface on Serial
 #define WITH_LCD      1                  // Hdwre has I2C 2x16 LCD display of either type
-#define WITH_MAX31855 1                  // Hdwre has MAX31855 thermocouple + circuit
-#define WITH_MAX6675  0                  // Hdwre has MAX6675  thermocouple + circuit
-#define WITH_TCPL_2   0                  // Second Thermocouple MUST be same type ( libraies conflict ) 
+#define WITH_MAX31855 0                  // Hdwre has MAX31855 thermocouple + circuit
+#define WITH_MAX6675  1                  // Hdwre has MAX6675  thermocouple + circuit
 #define WITH_VIRTTCPL 0                  // No hdwre, simulate virtual thermocouple output
-#define WITH_PCF8574  0                  // Hdwre has I2C I/O Extender      
-#define WITH_OFFN     0                  // Use 250mSec cycle via mill Off-On SSR, not fast h/w PWM
+#define WITH_TCPL_2   1                  // Second Thermocouple MUST be same type ( libraies conflict ) 
+#define WITH_PCF8574  0                  // Hdwre  as I2C I/O Extender      
+#define WITH_OFFN     1                  // Use 250mSec cycle via mill Off-On SSR, not fast h/w PWM
 #define WITH_WIFI     0                  // Compile for Wifi MQTT client (must have TickerScheduler.h .c in folder)
 #define WIFI_MQTT     0                  // Compile for Wifi MQTT client
 #define WIFI_SOKS     0                  // Compile for Wifi Web Sckt Srvr
@@ -477,8 +477,8 @@ const char ArspTops[]  = "/ep51/arti/arsp";
 //  My19  8.0  3.0  2.00  1.0  1.0  0.00  popc 
 //  
 //
-float pidcKp      =  10.000;              // P-Term gain
-float pidcKc      =  10.000;              // P-Term gain compensated for setpoint above ambient
+float pidcKp      =   8.000;              // P-Term gain
+float pidcKc      =   8.000;              // P-Term gain compensated for setpoint above ambient
 float pidcTi      =   1.600;              // I-Term Gain sec ( Ti++ = Gain--)
 float pidcTd      =   2.000;              // D-Term Gain sec ( Td++ = Gain++)
 //
@@ -499,6 +499,7 @@ float pidcUn = 0.0;                       // PID controller Output
 #define pidcUMax 255.000               // Outp Max
 #define pidcUMin   0.000               // Outp Min
 #define pidcAlpha  0.100               // D-term Filter time
+#define PIDC_NVDT  0                   // Sets Inverted D-Term, not classical Incremental PID 
 ///
 const char versChrs[] = "2018Jun01-10-1p6-2";
 /// wip: stored profiles
@@ -805,7 +806,7 @@ float vTmpDegF = ((AMBI_TMPC + 40 ) * (9.0 / 5.0 )) - 40 ;
 #define MACD_MEDI_SECS 10 
 #define MACD_FAST_SECS  5
 
-// 60 Sample pid input value history for moving average, rate of change calculation 
+// History Dataset for moving average of sensor values for e.g. rate of change calculation 
 uint   dataSet1[] = { AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, \
                       AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, \
                       AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, \
@@ -818,16 +819,8 @@ uint   dataSet1[] = { AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMB
                       AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC  };
 #define DATASET1_TALE 60                  // How many elements in history 
 #define DATASETS_MULT  4                  // Mutiplier on history samples for improved resolution 
-#define MAVF_WDOW 11                      // Window size for moving average Latest values
-#define MAVM_WDOW 11                      // Window size for moving average Medium values
-#define MAVL_WDOW 11                      // Window size for moving average Oldest values
-#define SAGO_WDOW 11
-//
-int   mavFIndx, mavMIndx, mavLIndx;                 // Fast, Med, Long Index for latest value
-float pidiMavF, pidiMavM, pidiMavL;                 // Fast, Med, Long PID input moving averages
-float pidiRocF, pidiRocL;                           // Fast, Long PID RoC,  rates of change 
 
-// 60 Sample of filtered pid history for moving average, rate of change calculation 
+// History Dataset for further process of sensor / moving average values for e.g. Savitzky-Golay curve fitting 
 uint   dataSet2[] = { AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, \
                       AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, \
                       AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, \
@@ -839,9 +832,25 @@ uint   dataSet2[] = { AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMB
                       AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, \
                       AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC  };
 #define DATASET2_TALE 60                 // How many elements in history 
-int set1Indx, set2Indx;
+#define MAV0_WDOW 11                      // Window size for moving average Latest values
+#define MAV1_WDOW 11                      // Window size for moving average Medium values
+#define MAV2_WDOW 11                      // Window size for moving average Oldest values
+#define SAGO_WDOW 11                      // Window size for S-G coefficients 
+#define FMA0_WDOW  3                      // Window size for fast MA trend direction detection 
+#define FMA1_WDOW  3
+#define FMA2_WDOW  3
+#define DIRN_THLD  2                      // Threshold for direction detection 
+//
+int   set1Indx, set2Indx;
+int   mav0Indx, mav1Indx, mav2Indx;                 // Indeces for Curr, Prev, Oldest long-Window MAVs for ROC 
+uint  pidiMav0, pidiMav1, pidiMav2;                 // Values  for Curr, Prev, Oldest long-Window MAVs for ROC 
+int   fma0Indx, fma1Indx, fma2Indx;                 // Indeces for Curr, Prev, Old    fast response ROC's for direction trends 
+int   pidiFma0, pidiFma1, pidiFma2;                 // Values  for Curr, Prev, Old    fast response ROC's for direction trends
+float pidiRoc0, pidiRoc1;                           // Fast, Long PID RoC,  rates of change
+boolean chgeArmd, chgeSeen, tpntArmd, tpntSeen;     // Armed, Detection flags for events 
 //
 // Ref: https://docs.scipy.org/doc/scipy-0.15.1/reference/generated/scipy.signal.savgol_coeffs.html
+//   Depending on desired window width uncomment one set of cefficients below 
 // 5 Wide 3rd order coefficients generated for Width=5 Order=3 Posn=4
 //float coefPwr0[] = {0.98571429,  0.05714286, -0.08571429,  0.05714286, -0.01428571};
 //   (test) coefficients generated for Width=5 Order=3 Posn=0 
@@ -859,8 +868,6 @@ float coefPwr0[] = { 0.79020979,  0.33566434,  0.05594406, -0.08391608, -0.11888
 float coefPwr1[] = { 0.55361305,  0.03962704, -0.22882673, -0.30730381, -0.25135975, \
                     -0.11655012,  0.04156954,  0.16744367,  0.20551671,  0.1002331 , \
                     -0.2039627 };
-#define PWR1_WDOW 11                    
-                     
 float coefPwr2[] = { 0.20979021, -0.02097902, -0.13053613, -0.14801865, -0.1025641 , \
                     -0.02331002,  0.06060606,  0.12004662,  0.12587413,  0.04895105,
                     -0.13986014 };
@@ -875,16 +882,24 @@ void mavsInit() {
   for  (i=0; (i < DATASET1_TALE  ); i++) {
     dataSet1[i] = AMBI_TMPC;
   }
-  pidiMavL = pidiMavM = pidiMavF= AMBI_TMPC;
-  mavFIndx = 0;                                                                           // Short  Moving Avge index: at first element of smoothed history   
-  mavMIndx = wrapIndx( (mavFIndx + (DATASET2_TALE / 2) + MAVM_WDOW), DATASET2_TALE);      // Medium Moving Avge index: at middle history plus window width
-  mavLIndx = wrapIndx( (mavFIndx + 1 + MAVL_WDOW)                  , DATASET2_TALE);      // Long   Moving Avge index: 1 beyond latest sample plus window width
-  pidiRocF = pidiRocL = pidi1Dif = pidi2Dif = 0;                                          // Short, Long rates of change
-  // dataSet2 (S-G smoothed sensor history) elements initialised
+  pidiMav2 = pidiMav1 = pidiMav0 = AMBI_TMPC;                                             // Slow Moving Avge
+  mav0Indx = 0;                                                                           // Slow MA Index, current: at first element of smoothed history   
+  mav1Indx = wrapIndx( (mav0Indx + (DATASET1_TALE / 2) +     MAV1_WDOW), DATASET1_TALE);  // Slow MA Index, mid-age: at mid history plus window width
+  mav2Indx = wrapIndx( (mav0Indx + 1 + MAV2_WDOW)                      , DATASET1_TALE);  // Slow MA index, oldest:  at end history, curr plus window width
+  //
+  pidiFma0 = pidiFma1 = pidiFma2 = 0;
+  fma0Indx = wrapIndx(  0                     , DATASET1_TALE);                           // Fast MA index                                                     // Fast MA Index, current
+  fma1Indx = wrapIndx( (fma0Indx - FMA0_WDOW ), DATASET1_TALE);                           // Fast MA Index, mid-age
+  fma2Indx = wrapIndx( (fma1Indx - FMA1_WDOW ), DATASET1_TALE);                           // Fast MA Index, oldest 
+  //  
+  pidiRoc0 = pidiRoc1 = pidi1Dif = pidi2Dif = 0;                                          // Short, Long rates of change
+  // dataSet2 (S-G smoothed sensor history) elements initialised 
   for  (i=0; (i < DATASET2_TALE  ); i++) {
     dataSet2[i] = AMBI_TMPC;
   }
-  set1Indx = set2Indx = 0;  
+  set1Indx = set2Indx = 0; 
+  chgeSeen = tpntSeen = 0; 
+  chgeArmd = tpntArmd = 1; 
 }
 
 //
@@ -900,17 +915,17 @@ int wrapIndx ( int iIndx, int iTale) {
 }
 
 // Returns incremental change in moving average, supplied index of new latest value in history 
-float incrMavs ( uint *aHistAddx, int iHistTale, int iIndx, int iWindWide ) {
+uint incrMavs ( uint *aHistAddx, int iHistTale, int iIndx, int iWindWide ) {
   float tempFltA;
   int tempIndx = wrapIndx ( (iIndx - iWindWide), iHistTale);
   tempFltA  = aHistAddx[iIndx];
   tempFltA -= aHistAddx[tempIndx];
   tempFltA /= float(iWindWide);
   //Serial.print("#Mavs : ");  Serial.println(tempFltA);
-  return(tempFltA);
+  return( uint( tempFltA +0.5));
 }
 
-// Returns Savitzky-Golay Value according to suppliaed Coefficients or differential coefficients
+// Returns Savitzky-Golay Value according to supplied Coefficients or differential coefficients
 float saGoCalc ( uint *aHistAddx, int iHistTale, int iIndx, int iWindWide, float *coefVals ) {
   float tempFltA = 0.000;
   int tempIndx, i;
@@ -918,7 +933,7 @@ float saGoCalc ( uint *aHistAddx, int iHistTale, int iIndx, int iWindWide, float
     tempIndx = wrapIndx ( (iIndx - iWindWide + i +1), iHistTale);  // Start at oldest, 'leftmost'
     tempFltA += aHistAddx[tempIndx] * coefVals[i];
   }  
-  //Serial.print("# sagCalc: ");  Serial.println(tempFltA);
+  //Serial.print("# saGoCalc: ");  Serial.println(tempFltA);
   return(tempFltA);
 }
 
@@ -980,22 +995,22 @@ void  bbrdArti() {
   if ( userScal == fahrScal) {                                
     dtostrf( (pidiSago * 9 / 5      + 0),  5, 1, &artiResp[ 0] );   // P0: Sa-Go MAvg temperature
 #if WITH_MAX6675
-    dtostrf( 10 * (pidiRocF * 9 / 5 + 0 ), 5, 1, &artiResp[18] );   // P3: Latest RoC
-    dtostrf( 10 * (pidiRocL * 9 / 5 + 0 ), 5, 1, &artiResp[24] );   // P4: Oldest RoC
+    dtostrf( 10 * (pidiRoc0 * 9 / 5 + 0 ), 5, 1, &artiResp[18] );   // P3: Latest RoC
+    dtostrf( 10 * (pidiRoc1 * 9 / 5 + 0 ), 5, 1, &artiResp[24] );   // P4: Oldest RoC
 #else    
-    dtostrf( (pidiRocF * 9 / 5    + 100 ), 5, 1, &artiResp[18] );   // P3: Latest RoC
-    dtostrf( (pidiRocL * 9 / 5    + 100 ), 5, 1, &artiResp[24] );   // P4: Oldest RoC
+    dtostrf( (pidiRoc0 * 9 / 5    + 100 ), 5, 1, &artiResp[18] );   // P3: Latest RoC
+    dtostrf( (pidiRoc1 * 9 / 5    + 100 ), 5, 1, &artiResp[24] );   // P4: Oldest RoC
 #endif     
   } else {
     //SePrn("# S-G:"); SePln(pidiSago);
     dtostrf( (pidiSago +   0 ) ,           5, 1, &artiResp[ 0] );   // P0: Sa-Go MAvg temperature
     //dtostrf( (adc0Curr  +  100 ) ,           5, 1, &artiResp[ 0] );   // P0: Sa-Go MAvg temperature
 #if WITH_MAX6675
-    dtostrf((10 *(pidiRocF )        + 0 ), 5, 1, &artiResp[18] );   // P3: 1/2 Min ROC from Simple MAvgs, scaled
-    dtostrf((10 *(pidiRocL)         + 0 ), 5, 1, &artiResp[24] );   // P4: 1.0 Min ROC from Simple MAvgs, scaled
+    dtostrf((10 *(pidiRoc0 )        + 0 ), 5, 1, &artiResp[18] );   // P3: 1/2 Min ROC from Simple MAvgs, scaled
+    dtostrf((10 *(pidiRoc1)         + 0 ), 5, 1, &artiResp[24] );   // P4: 1.0 Min ROC from Simple MAvgs, scaled
 #else    
-    dtostrf(( 1 *(pidiRocF )      + 100 ), 5, 1, &artiResp[18] );   // P3: 1/2 Min ROC from Simple MAvgs, offset 
-    dtostrf(( 1 *(pidiRocL )      + 100 ), 5, 1, &artiResp[24] );   // P4: 1/2 Min ROC from Simple MAvgs, offset
+    dtostrf(( 1 *(pidiRoc0 )      + 100 ), 5, 1, &artiResp[18] );   // P3: 1/2 Min ROC from Simple MAvgs, offset 
+    dtostrf(( 1 *(pidiRoc1 )      + 100 ), 5, 1, &artiResp[24] );   // P4: 1/2 Min ROC from Simple MAvgs, offset
 #endif     
   }
   // Add commas, eof to response fields  
@@ -1055,9 +1070,9 @@ void bbrdFill() {
     bbrdLin0[6]  = 'r';
     // Even Secs: show measured ROC  / Channel A sensor if two tcpls   
     if ( userScal == fahrScal) {
-      dtostrf( int(    pidiRocL * 9.00 / 5.00), +4, 0, &bbrdLin0[7] );
+      dtostrf( int(    pidiRoc1 * 9.00 / 5.00), +4, 0, &bbrdLin0[7] );
     } else {
-      dtostrf(         pidiRocL,                +4, 0, &bbrdLin0[7] );
+      dtostrf(         pidiRoc1,                +4, 0, &bbrdLin0[7] );
     }
 #if !( WITH_TCPL_2)
     if ( userScal == fahrScal) {
@@ -1132,7 +1147,7 @@ void bbrdFill() {
         dtostrf( floatCtoF(*chnATmpC),                05, 1, &artiResp[12] );
         dtostrf( floatCtoF(*chnBTmpC),                05, 1, &artiResp[18] );
         // ChnC,D replaced by ROC calculations 
-        dtostrf( (pidiRocL * 9.0 / 5.0 + 212),        05, 1, &artiResp[25] );
+        dtostrf( (pidiRoc1 * 9.0 / 5.0 + 212),        05, 1, &artiResp[25] );
         dtostrf( (pidi1Dif * 9.0 / 5.0 + 212),        05, 1, &artiResp[31] );
         dtostrf( floatCtoF( setpTmpC),                03, 0, &artiResp[45] );
         dtostrf( floatCtoF( pidiSago),                03, 0, &artiResp[49] );
@@ -1140,7 +1155,7 @@ void bbrdFill() {
         dtostrf(           *chnATmpC,                 05, 1, &artiResp[12] );
         dtostrf(           *chnBTmpC,                 05, 1, &artiResp[18] );
         // ChnC,D replaced by ROC calculations 
-        dtostrf( (pidiRocL * 1.0       + 100),        05, 1, &artiResp[25] );
+        dtostrf( (pidiRoc1 * 1.0       + 100),        05, 1, &artiResp[25] );
         dtostrf( (pidi1Dif * 1.0       + 100),        05, 1, &artiResp[31] );
         dtostrf(            setpTmpC,                 03, 0, &artiResp[45] );
         dtostrf(            pidiSago,                 03, 0, &artiResp[49] );
@@ -1439,7 +1454,7 @@ void cbck9000() {
 
 void cb90Svce() {
   int rCode = 0;
-  dtostrf( pidiRocL, 12, 3, mqttVals);
+  dtostrf( pidiRoc1, 12, 3, mqttVals);
   wrapPubl( c900Tops, (const char *)(mqttVals), sizeof(mqttVals) ); 
   //
   cb90Rctl &= ~RCTL_ATTN;
@@ -1541,32 +1556,47 @@ void millLoop() {
         tempFltA = uint(*pidcSens * DATASETS_MULT  + 0.5 ) ;
       } else {  
         // Replicate 
-        tempFltA = dataSet1[mavFIndx];
+        tempFltA = dataSet1[mav0Indx];
       }
       // 
       //   New value: Bump-Wrap index, insert into history, Update calculated moving average
       set1Indx = wrapIndx(++set1Indx, DATASET1_TALE);
       dataSet1[set1Indx] = tempFltA;
       /// DataSet1: Mavg and Roc F,M,L are performed on Scaled Samples
-      // Fast, Med, Long Moving averages on smoothed sensor samples 
-      mavFIndx = wrapIndx(++mavFIndx, DATASET2_TALE);
+      //
+      // Current, mid-age, oldest Slow Moving averages on sensor samples 
+      mav0Indx = wrapIndx(++mav0Indx, DATASET1_TALE);
       //   incrMavs MAvg calc returns change in cumulative moving average for latest values 
-      pidiMavF += incrMavs ( dataSet1, DATASET1_TALE, mavFIndx, MAVF_WDOW);
+      pidiMav0 += incrMavs ( dataSet1, DATASET1_TALE, mav0Indx, MAV0_WDOW);
       //   No New value: Bump-Wrap index, Update calculated moving average
-      mavMIndx = wrapIndx(++mavMIndx, DATASET1_TALE);
+      mav1Indx = wrapIndx(++mav1Indx, DATASET1_TALE);
       //   incrMavs MAvg calc returns change in cumulative moving average for latest values 
-      pidiMavM += incrMavs ( dataSet1, DATASET1_TALE, mavMIndx, MAVM_WDOW);
+      pidiMav1 += incrMavs ( dataSet1, DATASET1_TALE, mav1Indx, MAV1_WDOW);
       //   No New value: Bump-Wrap index, Update calculated moving average
-      mavLIndx = wrapIndx(++mavLIndx, DATASET1_TALE);
+      mav2Indx = wrapIndx(++mav2Indx, DATASET1_TALE);
       //   incrMavs MAvg calc returns change in cumulative moving average for latest values 
-      pidiMavL += incrMavs ( dataSet1, DATASET1_TALE, mavLIndx, MAVL_WDOW);
+      pidiMav2 += incrMavs ( dataSet1, DATASET1_TALE, mav2Indx, MAV2_WDOW);
+      //
+      // Current, older Fast Moving Averages on sensor samples 
+      fma0Indx = wrapIndx(++fma0Indx, DATASET1_TALE);
+      //   incrMavs MAvg calc returns change in cumulative moving average for latest values 
+      pidiFma0 += incrMavs ( dataSet1, DATASET1_TALE, fma0Indx, FMA0_WDOW);
+      //   No New value: Bump-Wrap index, Update calculated moving average
+      fma1Indx = wrapIndx(++fma1Indx, DATASET1_TALE);
+      //   incrMavs MAvg calc returns change in cumulative moving average for latest values 
+      pidiFma1 += incrMavs ( dataSet1, DATASET1_TALE, fma1Indx, FMA1_WDOW);
+      //   No New value: Bump-Wrap index, Update calculated moving average
+      fma2Indx = wrapIndx(++fma2Indx, DATASET1_TALE);
+      //   incrMavs MAvg calc returns change in cumulative moving average for latest values 
+      pidiFma2 += incrMavs ( dataSet1, DATASET1_TALE, fma2Indx, FMA2_WDOW);
+      //
       // Scale rates of change by distance between samples 
-      pidiRocF  = (pidiMavF - pidiMavM) * ( (60.0 / DATASETS_MULT) / ( DATASET2_TALE / 2  - ( MAVF_WDOW + MAVM_WDOW) / 2));
-      pidiRocL  = (pidiMavF - pidiMavL) * ( (60.0 / DATASETS_MULT) / ( DATASET2_TALE      - ( MAVF_WDOW + MAVL_WDOW) / 2));
+      pidiRoc0  = (pidiMav0 - pidiMav1) * ( (60.0 / DATASETS_MULT) / ( DATASET2_TALE / 2  - ( MAV0_WDOW + MAV1_WDOW) / 2));
+      pidiRoc1  = (pidiMav0 - pidiMav2) * ( (60.0 / DATASETS_MULT) / ( DATASET2_TALE      - ( MAV0_WDOW + MAV2_WDOW) / 2));
       //
       /// DataSet2: Savitzky-Golay smoothed samples 
       // Savitzky-Golay Smooting using latest sample and previous over window width
-      pidiSago = saGoCalc( dataSet1, DATASET1_TALE, mavFIndx, SAGO_WDOW, coefPwr0);
+      pidiSago = saGoCalc( dataSet1, DATASET1_TALE, mav0Indx, SAGO_WDOW, coefPwr0);
       // Insert smoothed, scaled sample point into history dataSet2
       // New value: Bump-Wrap index, insert scaled value into history, remove scaling factor
       set2Indx = wrapIndx(++set2Indx, DATASET2_TALE);
@@ -1580,6 +1610,26 @@ void millLoop() {
       // tbd What's the right scaling for Sa-Go differentials ? 
       pidi1Dif *= ( 60.0 / SAGO_WDOW);
       pidi2Dif *= ( 60.0 / SAGO_WDOW);
+      //
+      // Key Event detection 
+      //SePrn(F("# cA, tA, D1, D0, cS, tS:   "));
+      //SePrn(chgeArmd); SePrn(F(" ")); SePrn(tpntArmd); SePrn(F(" "));  
+      //SePrn(pidiFma1 - pidiFma2); SePrn(F(" ")); SePrn(pidiFma0 - pidiFma1); SePrn(F(" ")); SePrn(chgeSeen); 
+      //SePrn(F(" ")); SePln(tpntSeen); 
+      if ( chgeArmd) {
+        if ( ((pidiFma0 - pidiFma1 + DIRN_THLD) < 0 ) && ((pidiFma1 - pidiFma2 + DIRN_THLD) < 0 )) { 
+          chgeSeen = 1;
+          chgeArmd = 0;
+          Serial.println(F("# CHARGE Seen"));
+        }
+      }    
+      if ( tpntArmd) {
+        if ( ((pidiFma1 - pidiFma2 + DIRN_THLD) < 0 ) && ((pidiFma0 - pidiFma1 - DIRN_THLD) > 0 )) { 
+          tpntSeen = 1;
+          tpntArmd = 0;
+          Serial.println(F("# TURNPT Seen"));
+        }
+      }    
     }  // Enp per second moving average
   }  //  End Mill Step 
 }  
@@ -1775,7 +1825,11 @@ void pidcLoop() {
       // D term computes change in rate                                      
       if ( pidcTd > 0.0 ) {                            // D term compares ( curr + oldest ) vs (2 * middle)  values  
         //Jn10 KtKp pidcDn = pidcKp * ((pidcTd / Ts) * (Edfn - (2 * Edfn1) + Edfn2));
+#if PIDC_NVDT     
+        pidcDn = ((pidcTd / Ts) * ((2 * Edfn1) - Edfn - Edfn2));
+#else  
         pidcDn = ((pidcTd / Ts) * (Edfn - (2 * Edfn1) + Edfn2));
+#endif       
       } else {
         pidcDn = 0;
       } 
@@ -2560,9 +2614,9 @@ void virtTcplLoop() {
     vTmpDegC += vHtrCals / ( vChgGrms * vChgSpht );
     vTmpDegF  = (vTmpDegC + 40) * 9.0 / 5.0 - 40;             
     // TC4 return(int(vTmpDegF));
-    sns1TmpC  = vTmpDegC + ( int(random(5) +0.5));            //  random variatin added 
+    sns1TmpC  = vTmpDegC + ( (random(2) / 1.0 ));             //  random variation added 
 #if WITH_TCPL_2
-    sns2TmpC  = sns1TmpC + 22.22 + ( int(random(10) +0.5));   //  fake second sensor for debug
+    sns2TmpC  = sns1TmpC + 22.22 + ( (random(4) ));   //  fake second sensor for debug
 #endif    
   }
   //  if ( !( millis() % 1000 )) {
@@ -3159,6 +3213,9 @@ void userLoop() {
     if ((userCmdl[0] == 'y')) {
       // Live sync PID to present condition
       pidcSync(); 
+      pidiFma0 = pidiFma1 = pidiFma2 = 0;
+      chgeSeen = tpntSeen = 0; 
+      chgeArmd = tpntArmd = 1; 
     }
     // Y  re-start ESP 
 #if PROC_ESP  
