@@ -138,6 +138,9 @@
 #define TWIO_SCL    5     // I2C SCL
 // 
 #define SCOP_OPIN  13    // debug flag uses 'MOSI' line  
+// macros to toggle scope output pin specified above for logic analyser
+#define scopHi digitalWrite( SCOP_OPIN, 1)
+#define scopLo digitalWrite( SCOP_OPIN, 0)
 //
 #endif   // PROC_ESP Non PROC_NMCU
 ///
@@ -164,14 +167,12 @@
 #define TCPL_CLCK  14  // SPI SCk
 #define TCPL_CSEL  15  // SPI ChipSel 10K Gnd 
 #if WITH_TCPL_2
-#define TCPL_CSL2   0  // SPI ChipSel 10K Gnd 
+#define TCPL_CSL2  13  // SPI ChipSel 10K Gnd 
 #endif
 // PCF8574 ESP: ROTS Rotary 16way encoder switch;
 // i2c on esp for TWIO pcf8574
 #define TWIO_SDA    4     // I2C SDA
 #define TWIO_SCL    5     // I2C SCL
-// 
-#define SCOP_OPIN  13    // debug flag uses 'MOSI' line  
 // ensure ESP selections are active
 #define PROC_ESP    1
 //
@@ -213,12 +214,11 @@
 #define TWIO_SCL   3     // I2C SCL
 //
 #define SCOP_OPIN  2     // debug flag nixes SPI2_CSEL
-///
-#endif   // PROC_UNO
-
 // macros to toggle scope output pin specified above for logic analyser
 #define scopHi digitalWrite( SCOP_OPIN, 1)
 #define scopLo digitalWrite( SCOP_OPIN, 0)
+///
+#endif   // PROC_UNO
 
 // shorthand
 #define SePrn Serial.print
@@ -501,7 +501,7 @@ float pidcUn = 0.0;                       // PID controller Output
 #define pidcAlpha  0.100               // D-term Filter time
 #define PIDC_NVDT  0                   // Sets Inverted D-Term, not classical Incremental PID 
 ///
-const char versChrs[] = "2018Jun01-10-1p6-2";
+const char versChrs[] = "2018Jun18-publ-NMCUPins";
 /// wip: stored profiles
 // profiles
 //   stored as profiles 1-9 with steps 0-9 in each 
@@ -1480,8 +1480,9 @@ void millInit() {
 #endif
   pinMode( OFFN_OPIN, OUTPUT);
   digitalWrite( OFFN_OPIN, 0);
+#if (! PROC_NMCU)
   pinMode( SCOP_OPIN, OUTPUT);
-  scopLo;
+#endif
   millMark = micros() + MILL_POLL_USEC;
 }
 
