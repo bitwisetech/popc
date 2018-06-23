@@ -138,9 +138,6 @@
 #define TWIO_SCL    5     // I2C SCL
 // 
 #define SCOP_OPIN  13    // debug flag uses 'MOSI' line  
-// macros to toggle scope output pin specified above for logic analyser
-#define scopHi digitalWrite( SCOP_OPIN, 1)
-#define scopLo digitalWrite( SCOP_OPIN, 0)
 //
 #endif   // PROC_ESP Non PROC_NMCU
 ///
@@ -214,11 +211,12 @@
 #define TWIO_SCL   3     // I2C SCL
 //
 #define SCOP_OPIN  2     // debug flag nixes SPI2_CSEL
+///
+#endif   // PROC_UNO
+
 // macros to toggle scope output pin specified above for logic analyser
 #define scopHi digitalWrite( SCOP_OPIN, 1)
 #define scopLo digitalWrite( SCOP_OPIN, 0)
-///
-#endif   // PROC_UNO
 
 // shorthand
 #define SePrn Serial.print
@@ -355,7 +353,7 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);
 #include "Adafruit_MAX31855.h"
 Adafruit_MAX31855 tcpl(TCPL_CLCK, TCPL_CSEL, TCPL_MISO);
 #if WITH_TCPL_2
-MAX31855 tcp2(TCPL_CLCK, TCPL_CSL2, TCPL_MISO);                  // Second Tcpl shares clock, data
+Adafruit_MAX31855 tcp2(TCPL_CLCK, TCPL_CSL2, TCPL_MISO);                  // Second Tcpl shares clock, data
 #endif  //  WITH_TCPL_2
 #endif  //  WITH_UNO
 //
@@ -501,7 +499,7 @@ float pidcUn = 0.0;                       // PID controller Output
 #define pidcAlpha  0.100               // D-term Filter time
 #define PIDC_NVDT  0                   // Sets Inverted D-Term, not classical Incremental PID 
 ///
-const char versChrs[] = "2018Jun18-publ-NMCUPins";
+const char versChrs[] = "2018Jun23-dataSet2-millInit-publ";
 /// wip: stored profiles
 // profiles
 //   stored as profiles 1-9 with steps 0-9 in each 
@@ -835,7 +833,6 @@ uint   dataSet2[] = { AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMB
 #define MAV0_WDOW 11                      // Window size for moving average Latest values
 #define MAV1_WDOW 11                      // Window size for moving average Medium values
 #define MAV2_WDOW 11                      // Window size for moving average Oldest values
-#define SAGO_WDOW 11                      // Window size for S-G coefficients 
 #define FMA0_WDOW  3                      // Window size for fast MA trend direction detection 
 #define FMA1_WDOW  3
 #define FMA2_WDOW  3
@@ -851,15 +848,17 @@ boolean chgeArmd, chgeSeen, tpntArmd, tpntSeen;     // Armed, Detection flags fo
 //
 // Ref: https://docs.scipy.org/doc/scipy-0.15.1/reference/generated/scipy.signal.savgol_coeffs.html
 //   Depending on desired window width uncomment one set of cefficients below 
+#if PROC_UNO
 // 5 Wide 3rd order coefficients generated for Width=5 Order=3 Posn=4
-//float coefPwr0[] = {0.98571429,  0.05714286, -0.08571429,  0.05714286, -0.01428571};
+float coefPwr0[] = {0.98571429,  0.05714286, -0.08571429,  0.05714286, -0.01428571};
 //   (test) coefficients generated for Width=5 Order=3 Posn=0 
 //float coefPwr0[] = {-0.01428571,  0.05714286, -0.08571429,  0.05714286,  0.98571429};
 //   1st Differential coefficients generated for Width=5 Order=3 deriv=1 Posn=4 
-//float coefPwr1[] = { 1.48809524, -1.61904762, -0.57142857,  1.04761905, -0.3452381};
-//float coefPwr1[] = {  -0.3452381, 1.04761905, -0.57142857,  -1.61904762,  1.48809524};
+float coefPwr1[] = { 1.48809524, -1.61904762, -0.57142857,  1.04761905, -0.3452381};
 //   2nd Differential coefficients generated for Width=5 Order=3 deriv=1 Posn=4 
-//float coefPwr2[] = { 1.28571429, -2.14285714, -0.28571429,  1.85714286, -0.7142857};
+float coefPwr2[] = { 1.28571429, -2.14285714, -0.28571429,  1.85714286, -0.7142857};
+#define SAGO_WDOW  5                      // Window size for S-G coefficients 
+#else 
 // 11, 3, pos=0  coefficients generated for Width=11 Order=3 Posn=0
 float coefPwr0[] = { 0.79020979,  0.33566434,  0.05594406, -0.08391608, -0.11888112, \
                     -0.08391608, -0.01398601,  0.05594406,  0.09090909,  0.05594406, \
@@ -871,7 +870,10 @@ float coefPwr1[] = { 0.55361305,  0.03962704, -0.22882673, -0.30730381, -0.25135
 float coefPwr2[] = { 0.20979021, -0.02097902, -0.13053613, -0.14801865, -0.1025641 , \
                     -0.02331002,  0.06060606,  0.12004662,  0.12587413,  0.04895105,
                     -0.13986014 };
+#define SAGO_WDOW 11                      // Window size for S-G coefficients 
+#endif
 //
+
 float pidiSago, pidi1Dif, pidi2Dif;                  // Savitzky-Golay MAV, 1st Dif, 2nd Dif
 
 ///  Array indexing, moving averages
@@ -1152,16 +1154,16 @@ void bbrdFill() {
         dtostrf( floatCtoF( setpTmpC),                03, 0, &artiResp[45] );
         dtostrf( floatCtoF( pidiSago),                03, 0, &artiResp[49] );
       } else {
-        dtostrf(           *chnATmpC,                 05, 1, &artiResp[12] );
-        dtostrf(           *chnBTmpC,                 05, 1, &artiResp[18] );
+        dtostrf(           *chnATmpC,                 05, 1, &artiResp[12] );     // TC4-1 ET
+        dtostrf(           *chnBTmpC,                 05, 1, &artiResp[18] );     // TC4-2 BT
         // ChnC,D replaced by ROC calculations 
         dtostrf( (pidiRoc1 * 1.0       + 100),        05, 1, &artiResp[25] );
         dtostrf( (pidi1Dif * 1.0       + 100),        05, 1, &artiResp[31] );
         dtostrf(            setpTmpC,                 03, 0, &artiResp[45] );
         dtostrf(            pidiSago,                 03, 0, &artiResp[49] );
       }
-        dtostrf(             pwmdPcnt,                03, 0, &artiResp[37] );
-        dtostrf(             userAIO3,                03, 0, &artiResp[41] );
+        dtostrf(             pwmdPcnt,                03, 0, &artiResp[37] );     // TC4-7 PWM
+        dtostrf(             userAIO3,                03, 0, &artiResp[41] );     // TC4-8 FAN
       // insert leading zero into timestamps 
       if (artiResp[0] == ' ') artiResp[0] = '0'; 
       if (artiResp[3] == ' ') artiResp[3] = '0'; 
@@ -1467,22 +1469,25 @@ void cb90Svce() {
 void offnDrve ( byte tPin, byte tVal) {
 #if WITH_PCF8574
   twioWritePin( OFFN_TWPO, ((tVal > 0) ? 1:0));
-#endif  
+#else  
   digitalWrite( OFFN_OPIN, ((tVal > 0) ? 1:0));
+#endif  
 }
 
 void millInit() {
   millStep = 0;
-#if PROC_ESP
+#if ( PROC_ESP && !PROC_NMCU)
   adc0Curr = adc0Prev = adc0Maxi = adc0Mini = 0;
   adc0Poll = ADC0_POLL_MILL;
   adc0Mark = ADC0_POLL_MILL;
 #endif
+#if WITH_PCF8574
+  twioWritePin( OFFN_TWPO, 0);
+#else
+  digitalWrite( OFFN_OPIN, 0);
   pinMode( OFFN_OPIN, OUTPUT);
   digitalWrite( OFFN_OPIN, 0);
-#if (! PROC_NMCU)
-  pinMode( SCOP_OPIN, OUTPUT);
-#endif
+#endif  
   millMark = micros() + MILL_POLL_USEC;
 }
 
