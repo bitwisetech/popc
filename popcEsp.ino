@@ -109,7 +109,7 @@
 #define WIFI_SOKS     0                  // Compile for Wifi Web Sckt Srvr
 #define WIFI_WMAN     0                  // Compile for Wifi Manager
 //
-#define SHOW_OPT1     0                  // Compile for Wifi Manager
+#define SHOW_OPT1     0                  // Optional alternative display
 //
 #define AMBI_TMPC    19                  // Set 'Room Temperature' degC, returned on uninstalled sensor channels
 #define IDLE_TMPC    48                  // Set 'Idle Temperature' degC, returned as temp with eg permanent heater 
@@ -889,14 +889,14 @@ void  respArti() {
 #endif     
   } else {
 #if (PROC_ESP  && !SHOW_OPT1)
-    //dtostrf( ( 1 *(histRoc1 )       +   0), 5, 0, &artiResp[18] );   // P3: 1/2 Min ROC from Simple MAvgs, scaled
-    //dtostrf( ( 1 *(histRoc2)        +   0), 5, 0, &artiResp[24] );   // P4: 1.0 Min ROC from Simple MAvgs, scaled
-    dtostrf( ( 1 *(histMav1 / SCAL_FACT) ), 5, 0, &artiResp[18] );   // P3: Sa-Go MAvg temperature
-    dtostrf( ( 1 *(histMav2 / SCAL_FACT) ), 5, 0, &artiResp[24] );   // P4: Opt0-3
-    //dtostrf( ( 1 *(fma45Roc)        +  40), 5, 0, &artiResp[18] );   // P3: Sa-Go MAvg temperature
-    //dtostrf( ( 1 *(fma45Roc)        +  50), 5, 0, &artiResp[24] );   // P4: Opt0-3
-    dtostrf( ( 1 *(histMav0 / SCAL_FACT )), 5, 0, &artiResp[ 0] );   // P0: Sa-Go MAvg temperature
-    dtostrf( ( 1 *(histMav0 / SCAL_FACT )), 5, 0, &artiResp[48] );   // P8: Opt0-3
+    //dtostrf( ( 1 *(histMav1 / SCAL_FACT) ), 5, 0, &artiResp[18] );   // P3: Sa-Go MAvg temperature
+    //dtostrf( ( 1 *(histMav2 / SCAL_FACT) ), 5, 0, &artiResp[24] );   // P4: Opt0-3
+    //dtostrf( ( 1 *(histMav0 / SCAL_FACT )), 5, 0, &artiResp[ 0] );   // P0: Sa-Go MAvg temperature
+    //dtostrf( ( 1 *(histMav0 / SCAL_FACT )), 5, 0, &artiResp[48] );   // P8: Opt0-3
+    dtostrf( ( 1 *(histRoc1 )       +   0), 5, 0, &artiResp[18] );   // P3: 1/2 Min ROC from Simple MAvgs, scaled
+    dtostrf( ( 1 *(histRoc2)        +   0), 5, 0, &artiResp[24] );   // P4: 1.0 Min ROC from Simple MAvgs, scaled
+    dtostrf( ( 1 *(fma45Roc)        +   0), 5, 0, &artiResp[ 0] );   // P0: Optional
+    dtostrf( ( 1 *(fma45Roc)        +   0), 5, 0, &artiResp[48] );   // P8: Optional
 #else    
     //dtostrf( (0.1*(pidcPc   )     + 100), 5, 1, &artiResp[18] );   // P3: pid Prop component                    
     //dtostrf( (0.1*(pidcIc   )     + 100), 5, 1, &artiResp[24] );   // P4: pid Intg component
@@ -1517,6 +1517,34 @@ void pidcInfo() {
   Serial.println(pidcPoll);
 }
 
+void pidcRset() {
+  // PID live reset: Zero P, I, D terms  Setpoint <= Ambient 
+  // tbd: Should PID run after reset ? 
+  Tf = pidcAlpha * pidcTd;
+  pidcEn = Epn1   = Epn    = 0;
+  Edfn2  = Edfn1  = Edfn   = 0;
+  pidcPn = pidcIn = pidcDn = 0;
+  pidcPc = pidcIc = pidcDc = 0;
+  pidcUn = Un   = Un1      = 0;
+  pidcRn = pidcYn = setpTmpC = userDegs = AMBI_TMPC;
+  initMavs(AMBI_TMPC, INIT_PWMD);     // To clear dataSets and arm chge, tpnt detectors
+  bbrdMode = manuChar;
+  phseChar = orffChar;
+#if WITH_OFFN
+  offnDrve(OFFN_OPIN, 0);
+#endif  
+#if WITH_PWMD
+  pwmdRctl &= ~RCTL_AUTO;
+  pwmdRctl |=  RCTL_MANU;
+#endif  
+#if WITH_VIRTTCPL 
+  //sns1TmpC =  AMBI_TMPC;
+#if WITH_TCPL_2
+  //sns2TmpC =  AMBI_TMPC;
+#endif
+#endif  
+}
+
 // Initialise at processor boot setup; pulls gains from Eprom and overwrites compiled values
 void pidcInit() {
   pidcRset();
@@ -1590,14 +1618,12 @@ void pidcLoop() {
       if ( dUn > (pidcUMax - Un1) ) {
         dUn = pidcUMax - Un1;
         if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-            Serial.println(F("# maxSatn"));
-          }
+          Serial.println(F("# maxSatn"));
         }
       } else if ( dUn < (pidcUMin - Un1) ) {
         dUn = pidcUMin - Un1;
         if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-            Serial.println(F("# minSatn"));
-          }
+          Serial.println(F("# minSatn"));
         }
       }
       // Update output if increment is valid number 
@@ -1616,34 +1642,6 @@ void pidcLoop() {
       Edfn1 = Edfn;
     }
   }  
-}
-
-void pidcRset() {
-  // PID live reset: Zero P, I, D terms  Setpoint <= Ambient 
-  // tbd: Should PID run after reset ? 
-  Tf = pidcAlpha * pidcTd;
-  pidcEn = Epn1   = Epn    = 0;
-  Edfn2  = Edfn1  = Edfn   = 0;
-  pidcPn = pidcIn = pidcDn = 0;
-  pidcPc = pidcIc = pidcDc = 0;
-  pidcUn = Un   = Un1      = 0;
-  pidcRn = pidcYn = setpTmpC = userDegs = AMBI_TMPC;
-  initMavs(AMBI_TMPC, INIT_PWMD);     // To clear dataSets and arm chge, tpnt detectors
-  bbrdMode = manuChar;
-  phseChar = orffChar;
-#if WITH_OFFN
-  offnDrve(OFFN_OPIN, 0);
-#endif  
-#if WITH_PWMD
-  pwmdRctl &= ~RCTL_AUTO;
-  pwmdRctl |=  RCTL_MANU;
-#endif  
-#if WITH_VIRTTCPL 
-  //sns1TmpC =  AMBI_TMPC;
-#if WITH_TCPL_2
-  //sns2TmpC =  AMBI_TMPC;
-#endif
-#endif  
 }
 
 void pidcStrt(){
