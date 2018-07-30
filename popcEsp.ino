@@ -88,7 +88,7 @@
 //    for either processor 
 //      Set '1' compile-time switches, below:  WITH_LCD, WITH_MAX31855, WITH_MAX6675, WITH_PCF8574 if you have that hardware
 //      Your sketchbook/library must contain libraries:  LiquidCrystal, Adafruit_MAX31855_library (for UNO), MAX31855 (for ESP), PCF8574 as needed
-//      For ESP: Adafruit_ESP8266 plus libraries for wifi as selected: esp-mqtt-arduino, WiFiManager, WebSockets  ( not all wifi options tested ! ) 
+//      For ESP: Agdt pop_ESP8266 plus libraries for wifi as selected: esp-mqtt-arduino, WiFiManager, WebSockets  ( not all wifi options tested ! ) 
 //               Copy from /.arduino15/packages/esp8266/hardware/esp8266/2.3.0/libraries/Ticker/Ticker.h
 //
 //  Code compiler switches: 1/0 Enab/Dsel UNO-ESP proc HW, Wifi options - Rebuild, Upload after changing these 
@@ -548,9 +548,9 @@ int pwmdFreq, pwmdDuty, pwmdTarg, pwmdOutp = 0;                       // Freq, D
 #if IFAC_ARTI
 byte  bbrdRctl  = RCTL_ARTI;
 #else
-//byte  bbrdRctl  = RCTL_INFO;                    // Non-CSV serial out
 //
-byte  bbrdRctl  = 0x00;                        // Force CSV logging 
+byte  bbrdRctl  = RCTL_INFO;                    // Non-CSV serial out
+//byte  bbrdRctl  = 0x00;                        // Force CSV logging 
 #endif
 //
 #if WITH_LCD
@@ -2247,7 +2247,7 @@ void tcplLoop() {
         // Valid reading: update sensed temp
         sns1TmpC = float( tcplTmpC); 
         if (sns1TmpC >= MAXI_TMPC) {
-          pidcStop();
+          //pidcStop();
           Serial.println("# Max Temperature on Sensor 1: PID Stopped") ;
         }
       }
