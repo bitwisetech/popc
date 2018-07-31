@@ -88,7 +88,7 @@
 //    for either processor 
 //      Set '1' compile-time switches, below:  WITH_LCD, WITH_MAX31855, WITH_MAX6675, WITH_PCF8574 if you have that hardware
 //      Your sketchbook/library must contain libraries:  LiquidCrystal, Adafruit_MAX31855_library (for UNO), MAX31855 (for ESP), PCF8574 as needed
-//      For ESP: Agdt pop_ESP8266 plus libraries for wifi as selected: esp-mqtt-arduino, WiFiManager, WebSockets  ( not all wifi options tested ! ) 
+//      For ESP: Adafruit_ESP8266 plus libraries for wifi as selected: esp-mqtt-arduino, WiFiManager, WebSockets  ( not all wifi options tested ! ) 
 //               Copy from /.arduino15/packages/esp8266/hardware/esp8266/2.3.0/libraries/Ticker/Ticker.h
 //
 //  Code compiler switches: 1/0 Enab/Dsel UNO-ESP proc HW, Wifi options - Rebuild, Upload after changing these 
@@ -96,7 +96,7 @@
 #define PROC_NMCU     1                  // Compile for ESP with NodeMCU pins
 #define PROC_UNO      0                  // Compile for Arduino Uno
 #define IFAC_ARTI     1                  // Start with Artisan interface on Serial
-#define WITH_LCD      1                  // Hdwre has I2C 2x16 LCD display of either type
+#define WITH_LCD      0                  // Hdwre has I2C 2x16 LCD display of either type
 #define WITH_MAX31855 0                  // Hdwre has MAX31855 thermocouple + circuit
 #define WITH_MAX6675  1                  // Hdwre has MAX6675  thermocouple + circuit
 #define WITH_VIRTTCPL 0                  // No hdwre, simulate virtual thermocouple output
@@ -459,15 +459,15 @@ int eprmSize, eprmFree;
 // mqtt strings are declared for both ESP8266 and UNO 
 char mqttVals[] =  "                ";                     // mqtt value 16sp 15ch max
 // General Info topics 
-const char c100Tops[]  = "/ep51/cbck1000";
-const char c200Tops[]  = "/ep51/cbck2000";
-const char c900Tops[]  = "/ep51/cbck9000";
-const char echoTops[]  = "/ep51/echoCmdl";
-const char inf0Tops[]  = "/ep51/bbrdLin0";
-const char inf1Tops[]  = "/ep51/bbrdLin1";
-const char userTops[]  = "/ep51/userCmdl";
+const char c100Tops[]  = "/popc/cbck1000";
+const char c200Tops[]  = "/popc/cbck2000";
+const char c900Tops[]  = "/popc/cbck9000";
+const char echoTops[]  = "/popc/echoCmdl";
+const char inf0Tops[]  = "/popc/bbrdLin0";
+const char inf1Tops[]  = "/popc/bbrdLin1";
+const char userTops[]  = "/popc/userCmdl";
 // Artisan interface UC names  'Read' Cmd; Send Ambient:Targ:Sens:Prof:Duty
-const char ArspTops[]  = "/ep51/arti/arsp";
+const char ArspTops[]  = "/popc/arti/arsp";
 #endif
 
 //pidc
@@ -889,14 +889,14 @@ void  respArti() {
 #endif     
   } else {
 #if (PROC_ESP  && !SHOW_OPT1)
-    //dtostrf( ( 1 *(histMav1 / SCAL_FACT) ), 5, 0, &artiResp[18] );   // P3: Sa-Go MAvg temperature
-    //dtostrf( ( 1 *(histMav2 / SCAL_FACT) ), 5, 0, &artiResp[24] );   // P4: Opt0-3
-    //dtostrf( ( 1 *(histMav0 / SCAL_FACT )), 5, 0, &artiResp[ 0] );   // P0: Sa-Go MAvg temperature
-    //dtostrf( ( 1 *(histMav0 / SCAL_FACT )), 5, 0, &artiResp[48] );   // P8: Opt0-3
     dtostrf( ( 1 *(histRoc1 )       +   0), 5, 0, &artiResp[18] );   // P3: 1/2 Min ROC from Simple MAvgs, scaled
     dtostrf( ( 1 *(histRoc2)        +   0), 5, 0, &artiResp[24] );   // P4: 1.0 Min ROC from Simple MAvgs, scaled
-    dtostrf( ( 1 *(fma45Roc)        +   0), 5, 0, &artiResp[ 0] );   // P0: Optional
-    dtostrf( ( 1 *(fma45Roc)        +   0), 5, 0, &artiResp[48] );   // P8: Optional
+    //dtostrf( ( 1 *(histMav1 / SCAL_FACT) ), 5, 0, &artiResp[18] );   // P3:
+    //dtostrf( ( 1 *(histMav2 / SCAL_FACT) ), 5, 0, &artiResp[24] );   // P4:
+    //dtostrf( ( 1 *(fma45Roc)        +  40), 5, 0, &artiResp[18] );   // P3:
+    //dtostrf( ( 1 *(fma45Roc)        +  50), 5, 0, &artiResp[24] );   // P4:
+    dtostrf( ( 1 *(histMav0 / SCAL_FACT )), 5, 0, &artiResp[ 0] );   // P0: MAvg tmpC
+    dtostrf( ( 1 *(histMav0 / SCAL_FACT )), 5, 0, &artiResp[48] );   // P8: Opt
 #else    
     //dtostrf( (0.1*(pidcPc   )     + 100), 5, 1, &artiResp[18] );   // P3: pid Prop component                    
     //dtostrf( (0.1*(pidcIc   )     + 100), 5, 1, &artiResp[24] );   // P4: pid Intg component
@@ -906,7 +906,7 @@ void  respArti() {
     dtostrf( ( 1 *(beanRlHt)        + 100), 5, 1, &artiResp[48] );   // P8: Opt0-3
 #endif     
     //dtostrf( (  1*(pidcDc   )     + 100), 5, 1, &artiResp[36] );   // P6: pid Diff component  }
-    dtostrf( ( 1 * (histMav0 / SCAL_FACT)), 5, 1, &artiResp[36] );   // P6: RRoChnge of Fast MAvs
+    dtostrf( ( 1 *(fma45Roc)        +   0), 5, 0, &artiResp[36] );   // P6: FastMA ROC
   }  
   // Add commas, eof to response fields  
   artiResp[5]  = ',';
@@ -1057,12 +1057,12 @@ void fillBbrd() {
         dtostrf( (histRoc1             +  40)         ,5, 1, &artiResp[25] );     // CSV-5 Roc1
         dtostrf( (histRoc2             +  40)         ,5, 1, &artiResp[31] );     // CSV-6 Roc2
         dtostrf(             pwmdPcnt                 ,3, 0, &artiResp[37] );     // CSV-7 PWM
-#if !PROC_NMCU 
+#if PROC_UNO 
         dtostrf(( histMav0 / SCAL_FACT +   0)         ,5, 1, &artiResp[41] );     // CSV-8 FMav
         dtostrf( (  1 * beanRlHt       + 100 )        ,5, 1, &artiResp[51] );     // CSV-10 Pwr/dTmpC
 #else
         dtostrf(             userAIO3                 ,5, 1, &artiResp[41] );     // CSV-8 FAN
-        dtostrf( (fma45Roc / SCAL_FACT +   0 )         ,5, 1, &artiResp[51] );     // CSV-10 Pwr/dTmpC
+        dtostrf( (fma45Roc / SCAL_FACT +   0 )        ,5, 1, &artiResp[51] );     // CSV-10 fma45Roc
 #endif
         dtostrf(            setpTmpC                  ,3, 0, &artiResp[47] );     // CSV-9
       }
@@ -2482,15 +2482,15 @@ void userLoop() {
       // Artisan Mode only cmds 
       //  CHA(N);S1S2S3S4 cmd: Assign inputs ID into message sequence Sx; Resp '#' ack
       if ((userCmdl[0] == 'C') && (userCmdl[1] == 'H') && (userCmdl[2] == 'A')) {
-        // Send ack response 
-        if ( !( bbrdRctl & RCTL_ARTI ) ) {
-          Serial.println(F("# CHAN"));
-        }
         chanSens( 1, userCmdl.charAt(5));
         chanSens( 2, userCmdl.charAt(6));
         chanSens( 3, userCmdl.charAt(7));
         chanSens( 4, userCmdl.charAt(8));
       }
+        // Send ack response 
+        if ( !( bbrdRctl & RCTL_ARTI ) ) {
+          Serial.println(F("# CHAN"));
+        }
       //  FILT;L1;L2;L3;L4 cmd: Assign digital filter lever Lx to Input n; Resp '#' ack
       if ((userCmdl[0] == 'F') && (userCmdl[1] == 'I') && (userCmdl[2] == 'L') && (userCmdl[3] == 'T')) {
         // Send ack response 
@@ -3105,7 +3105,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
     if ( !( bbrdRctl & RCTL_ARTI ) ) {
       USE_SERIAL.printf("# [%u] popcSockSrvr get binary length: %u\n", num, length);
     }
-    hexdump(payload, lenght);
+    hexdump(payload, length);
 
     // send message to client
     // webSocket.sendBIN(num, payload, length);
