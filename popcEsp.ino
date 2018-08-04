@@ -1470,7 +1470,7 @@ void pidcFprm() {
 
 // Serial logout of PID internal values 
 void pidcInfo() {
-  Serial.print(F("# PIDC Kp:"));
+  Serial.print(F("# PIDC   Kp:"));
   Serial.print(pidcKp);
   Serial.print(F(" Ti:"));
   Serial.print(pidcTi);
@@ -1673,7 +1673,8 @@ void pidcSync() {
 void profInit() {
   // simulation
   *pidcSens = holdTmpC = int(AMBI_TMPC);
-  stepSecs  = totlSecs = 0;
+  stepSecs = totlSecs = secsTgat  = 0;
+  gateTmpC = BOILTMPC;
   profMark =  millis() + PROF_POLL_MSEC;
 }
 
@@ -1681,8 +1682,9 @@ void profLoop() {
   if ( millis() < profMark) return; else { 
     profMark += PROF_POLL_MSEC;  
     // prevent lcd rollover; 6000 secs == 100 min 
-    (totlSecs > 5998) ? (totlSecs = 0):(totlSecs += 1);
-    (stepSecs > 5998) ? (stepSecs = 0):(stepSecs += 1);
+    (secsTgat >    0) ? (secsTgat -= 1) : (secsTgat  = 0);
+    (totlSecs > 5998) ? (totlSecs  = 0) : (totlSecs += 1);
+    (stepSecs > 5998) ? (stepSecs  = 0) : (stepSecs += 1);
     // apply PID gain compensation if non-zero
      if ( (!isnan(*pidcSens)) && ( pidcKappa > 0 ) ) {
       pidcKc = pidcKp * ( 1 + pidcKappa * ( *pidcSens - IDLE_TMPC ) / IDLE_TMPC );
@@ -1732,6 +1734,11 @@ void profLoop() {
                  + float (stepSecs) * float(rampCdpm) / 60.0;
       }          
     }
+    if ( histRoc1 > 0) { 
+      //          secsTgat = 60 * ( gateTmpC - *pidcSens ) / rampCdpm;
+      //
+      secsTgat = 60 * ( gateTmpC - *pidcSens ) / histRoc1;
+    }  
     // update billboard
     fillBbrd();
     int tempIntA;
@@ -1963,7 +1970,7 @@ void rotsLoop() {
           break;
           case 2:
             stepNmbr = 2;
-            userCmdl = "R5";
+            userCmdl = "R6";
           break;
           case 3:
             stepNmbr = 3;
