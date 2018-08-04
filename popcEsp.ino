@@ -35,30 +35,30 @@
 // 
 //  Command & LCD Indicators; Upcase: User Set; LowCase: Auto/Sensed/Readback value 
 //  a/A     Set serial interface to Artisan talk
-//  Bff     Set PID Beta parameter (Float; Expert only ! )  
+//  b/B
 //  CHAN    (Auto from Artisan) Set Artisan speak
 //  c/C     Set centigrade units; LCD display actual/target temp
 //  d/D     toggle diagnostic verbose messages on serial 
 //  e/E     Readback / Update From/To EEPROM PID parameters 
 //  f/F     Set fahrenheit units; LCD display actual/target temp
-//  Gff     Set PID Gamma parameter (Float; Expert only ! )  
+//  g/G     Set gate TmpC /
 //  h/H     Set hold temperature setpoint for ramp endpoint (soak temp )
 //  Iff     Set PID I-Term time (Float Ti: lower value == higher gain)
 //  Jff     Set PID D-Term gain (Float Td: lower value == lower  gain)
-//  Kff     Set PID Gain TComp  (Float Kappa: 0 == no Temp comp)
+//  k/K     
 //  l/L     Send Artisan CSV format on serial ( for capture and Artisan Import )  
 //  m/M     Rsvd MQTT msg / Set bean Mass for virtual tcpl  
 //  n/N     Rsvd NetSock  / PID oN
 //  o       Rsvd          / PID Off
 //  p/Pff   Readback / Set PID P-Term gain (Float Kp: lower value == lower  gain)
-//  q/Q     Query Readback PIDC operating (not eeprom) parameters / Q tbd
+//  q/Q     
 //  rnn/Rnn Set Temperature Ramp C/F Deg per min (Set before hold temp) 
 //  snn/Snn Set immediate target setPoint C/F temperature  
 //  t/T     Spare
 //  u/U     Set PWM Frequency Hz (TBD)  
 //  v/V     Readback Version, PID, EEPROM to serial / EPROM => PID Values
 //  wnn/Wnn Set PWM Duty Cycle nn <= 100, disable PID
-//  x/X     Rdbk/Write PID XVal: Steady temp with   0% pwm 
+//  x/X
 //  y/Y     Live Sync PID to current power setting / ESP restart
 //  z/Z     Zero reset all timecounts / Reset PID 
 //
@@ -96,7 +96,7 @@
 #define PROC_NMCU     1                  // Compile for ESP with NodeMCU pins
 #define PROC_UNO      0                  // Compile for Arduino Uno
 #define IFAC_ARTI     1                  // Start with Artisan interface on Serial
-#define WITH_LCD      0                  // Hdwre has I2C 2x16 LCD display of either type
+#define WITH_LCD      1                  // Hdwre has I2C 2x16 LCD display of either type
 #define WITH_MAX31855 0                  // Hdwre has MAX31855 thermocouple + circuit
 #define WITH_MAX6675  1                  // Hdwre has MAX6675  thermocouple + circuit
 #define WITH_VIRTTCPL 0                  // No hdwre, simulate virtual thermocouple output
@@ -120,13 +120,14 @@
 // ESP Pin Assignments 
 #if (PROC_ESP && !PROC_NMCU)
 // A/D 1v 10b on ADC Pin
+// Handle either LED polarity with: (1 & ~ONBD_LOWON) for light, (0 | LED_LOWN) for dark 
+#define ONBD_OPIN   0                    // Pin0 ESP Red led low on )
+#define ONBD_LOWON  1
+//
 // Off/On SSR driver GPIO 16 deepWake     
 #define OFFN_OPIN  16
-// Handle either LED polarity with: (1 & ~ONBD_LOWON) for light, (0 | LED_LOWN) for dark 
-#define ONBD_OPIN   0
-#define ONBD_LOWON  1
 // PWM Drive SSR driver GPIO 2 BLed  
-#define PWMD_OPIN   2
+#define PWMD_OPIN   2                    // Pin2 ESP Blue led low off )
 #define PWMD_MODE  OUTPUT
 #define PWMD_FREQ 128
 // spi on ESP FOR tcpl
@@ -419,19 +420,28 @@ const char csvlHdr2[] = "Time1	Time2	ET	BT	Event	S3	S4	Htr	Fan	SetPt	Amb";
 // billboard string for LCD + Serial  Lower cases: computed/measured Upper case: User/Setpoints 
 char bbrdLin0[] = "w100% r-123 128c"; 
 char bbrdLin1[] = "P0-0 S12.3m 228C";
+// UpperCase imperatives 
 #define holdChar  'H'                       // Prefix to decimal mins alternating with total time
 #define manuChar  'M' 
 #define rampChar  'R'
 #define setpChar  'S'
 #define fahrChar  'F'
 #define celsChar  'C'
+// lowerCase computed
 #define orffChar  'o'
-#define prehChar  'p'
-#define muteChar  'm'
+#define boilChar  'b'
 #define chgdChar  'c'
+#define dryeChar  'd'
+#define finiChar  'f'
+#define fc1sChar  'k'
+#define muteChar  'm'
+#define prehChar  'p'
 #define tpntChar  't'
+#define BOILTMPC  100
+#define DRYETMPC  150
+#define FC1STMPC  200
+#define FINITMPC  230
 char bbrdMode, phseChar;
-char dbugLine[] = " <==>                                                                           ";
 char userScal   = 'C';
 
 //
@@ -467,7 +477,7 @@ const char inf0Tops[]  = "/popc/bbrdLin0";
 const char inf1Tops[]  = "/popc/bbrdLin1";
 const char userTops[]  = "/popc/userCmdl";
 // Artisan interface UC names  'Read' Cmd; Send Ambient:Targ:Sens:Prof:Duty
-const char ArspTops[]  = "/popc/arti/arsp";
+const char ArspTops[]  = "/popc/artiResp";
 #endif
 
 //pidc
@@ -481,7 +491,7 @@ const char ArspTops[]  = "/popc/arti/arsp";
 //
 float pidcKp      =  12.000;              // P-Term gain
 float pidcKc      =  12.000;              // P-Term gain compensated for setpoint above ambient
-float pidcTi      =   1.500;              // I-Term Gain sec ( Ti++ = Gain--)
+float pidcTi      =   1.350;              // I-Term Gain sec ( Ti++ = Gain--)
 float pidcTd      =   0.800;              // D-Term Gain sec ( Td++ = Gain++)
 //
 float pidcBeta    =   1.000;              // P-term Refr vs YInp
@@ -504,7 +514,7 @@ int   pidcPc, pidcIc, pidcDc       = 0.0; // cumulative P-I-D components for dia
 #define PIDC_NVDT  0                      // Sets Inverted D-Term, not classical Incremental PID 
 ///
 //
-const char versChrs[] = "18Jl20-OPT1";
+const char versChrs[] = "18Au04-sync";
 /// wip: stored profiles
 // profiles
 //   stored as profiles 1-9 with steps 0-9 in each 
@@ -600,18 +610,18 @@ unsigned long tcp2Mark = 0UL;
 //
 
 //
-float         setpTmpC;                        // PID setpoint temp degC and previous value 
-int           sns1Cdpm,  sns2Cdpm,  prevSetp;  // PID input, sens1, 2
-int           userDuty,  userDgpm;             // userSet duty cycle; userSet C/F, meas C dg pm
-int           userAOT1,  userAOT2, userAIO3;   // Arti OT1Dty, Arti OT2Dty, Arti IO3Dty 
-int           baseTmpC,  rampCdpm, holdTmpC;   // Ramp start temp, hold at  endpoint 
-int           stepSecs,  holdTogo, totlSecs;   // Step elapsed, hold countdown, total run time
-int           userDegs;                        // User C/F temp, temporary array indexers, scratch vbls
-float         sns1TmpC,  sns2TmpC;             // Sensed temperature deg C for sensors 1, 2 
-float        *chnATmpC, *chnBTmpC;             // Pointers to sensor tempC for first two Artisan response slots
+float  setpTmpC;                          // PID setpoint temp degC and previous value 
+int    sns1Cdpm, sns2Cdpm           = 0;  // PID input, sens1, 2
+int    userDuty, userDgpm = 0;            // userSet duty cycle; userSet C/F, meas C dg pm
+int    userAOT1, userAOT2, userAIO3 = 0;  // Arti OT1Dty, Arti OT2Dty, Arti IO3Dty 
+int    baseTmpC, rampCdpm, holdTmpC = 0;  // Ramp start temp, hold at  endpoint 
+int    stepSecs, secsTgat, totlSecs = 0;  // Step elapsed, hold countdown, total run time
+int    gateTmpC, userDegs = 0;            // User C/F temp, temporary array indexers, scratch vbls
+float  sns1TmpC, sns2TmpC;                // Sensed temperature deg C for sensors 1, 2 
+float  *chnATmpC, *chnBTmpC;              // Pointers to sensor tempC for first two Artisan response slots
 #if PROC_ESP
-float         sns3TmpC,  sns4TmpC;             // Sensed temperature deg C for sensors 3, 4 
-float        *chnCTmpC, *chnDTmpC;             // Pointers to sensor tempC for 2nd   two Artisan response slots
+float         sns3TmpC,  sns4TmpC;        // Sensed temperature deg C for sensors 3, 4 
+float        *chnCTmpC, *chnDTmpC;        // Pointers to sensor tempC for 2nd   two Artisan response slots
 #endif
 float        *pidcSens;                        // Pointers to sensor input to PID
 
@@ -625,6 +635,7 @@ float vTmpDegC = IDLE_TMPC;
 float vTmpDegF = ((IDLE_TMPC + 40 ) * (9.0 / 5.0 )) - 40 ;
 
 // History Dataset for moving average of sensor values for e.g. rate of change calculation 
+#if PROC_ESP
 int   dataSet1[] = { AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, \
                       AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, \
                       AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, \
@@ -638,7 +649,6 @@ int   dataSet1[] = { AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI
 #define DATASET1_TALE 60              // How many elements in history 
 
 // History Dataset for further process of sensor / moving average values for e.g. Savitzky-Golay curve fitting 
-#if PROC_ESP
 int   dataSet2[] = { AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, \
                       AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, \
                       AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, \
@@ -651,14 +661,17 @@ int   dataSet2[] = { AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI
                       AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC  };
 #define DATASET2_TALE 60                 // How many elements in history 
 #else
-// UNO storage limits size of history dataset2
-int   dataSet2[] = { AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, \
-                      AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, \
+// UNO storage limits size of history datasets
+int   dataSet1[] = { AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, \
                       AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, \
                       AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, \
                       AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, \
                       AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC  };
-#define DATASET2_TALE 36                 // How many elements in history 
+#define DATASET1_TALE 30              // How many elements in history 
+
+int   dataSet2[] = { AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, \
+                      AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC, AMBI_TMPC  };
+#define DATASET2_TALE 12                 // How many elements in history 
 #endif
 //
 #define FMA0_WDOW  3                      // Window numb slots for fast MA trend direction detection 
@@ -825,7 +838,7 @@ float floatFtoC( float fahrInp) {
 
 //
 int    intgFtoC( int   fahrInp) {
-  return (int  ( ((fahrInp + 40.0) * 5.0 / 9.0 )   - 39.5 ));
+  return (int  ( ((fahrInp + 40) * 5 / 9 ) - 39.5 ));
 }
 
 //
@@ -895,18 +908,20 @@ void  respArti() {
     //dtostrf( ( 1 *(histMav2 / SCAL_FACT) ), 5, 0, &artiResp[24] );   // P4:
     //dtostrf( ( 1 *(fma45Roc)        +  40), 5, 0, &artiResp[18] );   // P3:
     //dtostrf( ( 1 *(fma45Roc)        +  50), 5, 0, &artiResp[24] );   // P4:
-    dtostrf( ( 1 *(histMav0 / SCAL_FACT )), 5, 0, &artiResp[ 0] );   // P0: MAvg tmpC
-    dtostrf( ( 1 *(histMav0 / SCAL_FACT )), 5, 0, &artiResp[48] );   // P8: Opt
+    dtostrf( ( 1 *(histFma0 / SCAL_FACT )), 5, 0, &artiResp[ 0] );   // P0: MAvg tmpC
+    dtostrf( ( 1 *(histFma0 / SCAL_FACT )), 5, 0, &artiResp[48] );   // P8: Opt
+    dtostrf( ( 1 *(fma45Roc)        +   0), 5, 0, &artiResp[36] );   // P6: FastMA ROC
 #else    
-    //dtostrf( (0.1*(pidcPc   )     + 100), 5, 1, &artiResp[18] );   // P3: pid Prop component                    
-    //dtostrf( (0.1*(pidcIc   )     + 100), 5, 1, &artiResp[24] );   // P4: pid Intg component
     dtostrf( ( 1 * (histRoc1      ) +   0), 5, 1, &artiResp[18] );   // P3: 1/2 Min ROC from Simple MAvgs, scaled
     dtostrf( ( 1 * (histRoc2      ) +   0), 5, 1, &artiResp[24] );   // P4: 1.0 Min ROC from Simple MAvgs, scaled
-    dtostrf( ( 1 *(beanRlHt)        + 100), 5, 1, &artiResp[ 0] );   // P0: Sa-Go MAvg temperature
-    dtostrf( ( 1 *(beanRlHt)        + 100), 5, 1, &artiResp[48] );   // P8: Opt0-3
+    //dtostrf( (0.1*(pidcPc   )     + 100), 5, 1, &artiResp[18] );   // P3: pid Prop component                    
+    //dtostrf( (0.1*(pidcIc   )     + 100), 5, 1, &artiResp[24] );   // P4: pid Intg component
+    //dtostrf( ( 1 *(beanRlHt)        + 100), 5, 1, &artiResp[ 0] );   // P0: Sa-Go MAvg temperature
+    //dtostrf( ( 1 *(beanRlHt)        + 100), 5, 1, &artiResp[48] );   // P8: Opt0-3
+    //dtostrf( ( 1 *(histMav0 / SCAL_FACT )), 5, 1, &artiResp[ 0] );   // P0: MAvg tmpC
+    dtostrf( ( 1 *(histFRoc )),             5, 1, &artiResp[48] );   // P8: Opt
+    dtostrf(          userAIO3,             5, 1, &artiResp[36] );   // P6: (FAN) PWM % Duty Cycle
 #endif     
-    //dtostrf( (  1*(pidcDc   )     + 100), 5, 1, &artiResp[36] );   // P6: pid Diff component  }
-    dtostrf( ( 1 *(fma45Roc)        +   0), 5, 0, &artiResp[36] );   // P6: FastMA ROC
   }  
   // Add commas, eof to response fields  
   artiResp[5]  = ',';
@@ -917,6 +932,8 @@ void  respArti() {
   artiResp[35] = ',';
   artiResp[41] = ',';
   artiResp[47] = ',';
+  //artiResp[53] = '/r'; 
+  //artiResp[54] = '/n';
   //artiResp[53] = artiResp[54] = artiResp[55] = artiResp[56] = ' ';
 }
 
@@ -926,41 +943,13 @@ void fillBbrd() {
   //   strf ops append null chars, fill single chars later 
   // Billboard Line [0] 
   // LCD Display alternates on Even/Odd seconds
-  if ((stepSecs != 0) && ( totlSecs % 2 )){
-    // Odd Seconds count
-    if (pidcRctl & RCTL_RUNS) {
-      // Odd seconds, PID running: show A(uto) or m(onitor) 0-255
-      if (pidcRctl & RCTL_AUTO) {
-        bbrdLin0[0] = char(42);
-      } else {  
-        bbrdLin0[0] = 'm';
-      }
-      dtostrf( pidcUn,                              3, 0, &bbrdLin0[1]);
-      bbrdLin0[4]   = ' ';
-    }
-    // Odd Secs: show desred ROC
-    bbrdLin0[6]  = 'R';
-    // Odd secs:  show Target ROC, ChanB (ET) or Setpoint if not Tcpl2
-    dtostrf( userDgpm,                           +4, 0, &bbrdLin0[7] );
-    //  Display Setpoint on odd seconds if no second thermocouple 
-#if !( WITH_TCPL_2)
-    if ( userScal == fahrChar) {
-      dtostrf( floatCtoF(setpTmpC),              3, 0, &bbrdLin0[12] );
-    } else {
-      dtostrf(           setpTmpC,               3, 0, &bbrdLin0[12] );
-    }
-    bbrdLin0[15]  = setpChar;                      //  Indicate Setpoint Temp
-#endif
-  } else {                                         // End Odd seconds
+  if ( !(totlSecs % 2 )){
     // Even Seconds count
-    // Even seconds, Show PWM output 
-    if ( pwmdRctl & RCTL_MANU) {
-      bbrdLin0[0] = 'W';                           // Indicate manual PWM upper case 'W'
-    } else {
-      bbrdLin0[0] = 'w';                           // Indicate PID    PWM lower case 'w'
-    }
-    dtostrf( pwmdPcnt,                           3, 0, &bbrdLin0[1]);
-    bbrdLin0[4]   = '%';
+    bbrdLin0[0]   = phseChar;
+    // Even Secs: show gate togo time in min.tenths
+    dtostrf( (secsTgat     ),                       3, 0, &bbrdLin0[1]);
+    bbrdLin0[4]  = ' ';
+    //
     // Even Secs: show measured ROC  
     bbrdLin0[6]  = 'r';
     // Even Secs: show measured ROC  / Channel A sensor if two tcpls   
@@ -969,27 +958,49 @@ void fillBbrd() {
     } else {
       dtostrf(         histRoc1,                +4, 0, &bbrdLin0[7] );
     }
-#if !( WITH_TCPL_2)
+    // Show thermocouple installed on ChanB = BT 
+    bbrdLin0[11] = 'b';
     if ( userScal == fahrChar) {
-      dtostrf( floatCtoF(holdTmpC),              3, 0, &bbrdLin0[12] );
+      dtostrf( floatCtoF(*chnBTmpC),               3, 0, &bbrdLin0[12] );
     } else {
-      dtostrf(           holdTmpC,               3, 0, &bbrdLin0[12] );
-    }
-    bbrdLin0[15]  = holdChar;                       //  Indicate Hold (Soak) Temp
-#endif
+      dtostrf(           *chnBTmpC,                3, 0, &bbrdLin0[12] );
+    } 
+    bbrdLin0[15]  = userScal + 0x20;                 // Measured temp: lower case c/f
   }                                             //  End Even Seconds
+  if (  (totlSecs % 2 )){
+    // Odd Seconds count
+    // Odd  seconds, Show PWM output 
+    if ( pwmdRctl & RCTL_MANU) {
+      bbrdLin0[0] = 'W';                           // Indicate manual PWM upper case 'W'
+    } else {
+      bbrdLin0[0] = 'w';                           // Indicate PID    PWM lower case 'w'
+    }
+    dtostrf( pwmdPcnt,                           3, 0, &bbrdLin0[1]);
+    bbrdLin0[4]   = '%';
+    // Odd Secs: show desred ROC
+    bbrdLin0[6]  = 'R';
+    // Odd secs:  show Target ROC, ChanB (ET) or Setpoint if not Tcpl2
+    dtostrf( userDgpm,                          +4, 0, &bbrdLin0[7] );
+#if WITH_TCPL_2
+    // Second thermocouple installed: Show ChanA = ET 
+    bbrdLin0[11] = 'a';
+    if ( userScal == fahrChar) {
+      dtostrf( floatCtoF(*chnATmpC),             3, 0, &bbrdLin0[12] );
+    } else {
+      dtostrf(           *chnATmpC,              3, 0, &bbrdLin0[12] );
+    } 
+#else
+    bbrdLin0[11] = 's';
+    if ( userScal == fahrChar) {
+      dtostrf( floatCtoF(setpTmpC),              3, 0, &bbrdLin0[12] );
+    } else {
+      dtostrf(           setpTmpC,               3, 0, &bbrdLin0[12] );
+    }
+#endif
+  }
   // Either Secs count, overwrite string nulls with spaces
   bbrdLin0[5]  = ' ';
-  bbrdLin0[11] = ' ';
-#if WITH_TCPL_2
-  // Second thermocouple installed: Always Show ChanA = ET 
-  if ( userScal == fahrChar) {
-    dtostrf( floatCtoF(*chnATmpC),               3, 0, &bbrdLin0[12] );
-  } else {
-    dtostrf(           *chnATmpC,                3, 0, &bbrdLin0[12] );
-  } 
   bbrdLin0[15]  = userScal + 0x20;                 // Measured temp: lower case c/f
-#endif
   //
   // Billboard Line [1]
   // Profile Nmbr-Step 
@@ -997,31 +1008,37 @@ void fillBbrd() {
   bbrdLin1[1]   = nibl2Hex( profNmbr);
   bbrdLin1[2]   = '-';
   bbrdLin1[3]   = nibl2Hex(stepNmbr);                 
-  bbrdLin1[4]   = phseChar;
+  bbrdLin1[4]   = ' ';
+  if ( !(totlSecs % 2 )) {
+    // Even Secs: Preface time display with T(otal) time from startup
+    bbrdLin1[5] = 'T';
+    // Even Secs: show total time in min.tenths
+    dtostrf( (totlSecs / 60),                     2, 0, &bbrdLin1[6]);
+    dtostrf( ((totlSecs / 6) % 10),               1, 0, &bbrdLin1[9]);
+    if ( userScal == fahrChar) {
+      dtostrf( floatCtoF(holdTmpC),               3, 0, &bbrdLin1[12] );
+    } else {
+      dtostrf(           holdTmpC,               3, 0, &bbrdLin1[12] );
+    }
+    bbrdLin1[11]  = holdChar;                       //  Indicate Hold (Soak) Temp
+  }                                            //  End Even Seconds
   if ( totlSecs % 2 ) {
     // Odd Secs: Preface time display with H(old), M(anu), R(amp), S(etp)
     bbrdLin1[5] = bbrdMode;
     // Odd Secs: show step time in min.tenths
     dtostrf( (stepSecs / 60),                     2, 0, &bbrdLin1[6]);
     dtostrf( ((stepSecs / 6) % 10),               1, 0, &bbrdLin1[9]);
-    
-  } else {                                         // End Odd seconds
-    // Even Secs: Preface time display with T(otal) time from startup
-    bbrdLin1[5] = 'T';
-    // Even Secs: show total time in min.tenths
-    dtostrf( (totlSecs / 60),                     2, 0, &bbrdLin1[6]);
-    dtostrf( ((totlSecs / 6) % 10),               1, 0, &bbrdLin1[9]);
-  }                                            //  End Even Seconds
-  // Either Secs count, Always show ChanB-Sensor1 BT; overwrite string nulls with spaces
-  if ( userScal == fahrChar) {
-    dtostrf( floatCtoF(*chnBTmpC),                3, 0, &bbrdLin1[12] );
+    if ( userScal == fahrChar) {
+      dtostrf( floatCtoF(setpTmpC),               3, 0, &bbrdLin1[12] );
   } else {
-    dtostrf(           *chnBTmpC,                 3, 0, &bbrdLin1[12] );
-  } 
+      dtostrf(           setpTmpC,               3, 0, &bbrdLin1[12] );
+    } 
+    bbrdLin1[11]  = setpChar;
+  }  
+  // Either Secs count, Always show ChanB-Sensor1 BT; overwrite string nulls with spaces
   bbrdLin1[8]   = '.';                             // Mins decimal pt, indecator, space
-  bbrdLin1[10]   = 'm';                           
-  bbrdLin1[11]  = ' ';
-  bbrdLin1[15]  = userScal + 0x20;                 // Single thermocouple: Lower case c/f
+  bbrdLin1[10]  = 'm';                                
+  bbrdLin1[15]  = userScal;
   //
   // fill info for serial output either Artisan protocol or console Info/csv logging 
   if (bbrdRctl & RCTL_ARTI ){
@@ -1059,7 +1076,7 @@ void fillBbrd() {
         dtostrf(             pwmdPcnt                 ,3, 0, &artiResp[37] );     // CSV-7 PWM
 #if PROC_UNO 
         dtostrf(( histMav0 / SCAL_FACT +   0)         ,5, 1, &artiResp[41] );     // CSV-8 FMav
-        dtostrf( (  1 * beanRlHt       + 100 )        ,5, 1, &artiResp[51] );     // CSV-10 Pwr/dTmpC
+        dtostrf( ( 1  * beanRlHt       +   0 )        ,5, 1, &artiResp[51] );     // CSV-10 Pwr/dTmpC
 #else
         dtostrf(             userAIO3                 ,5, 1, &artiResp[41] );     // CSV-8 FAN
         dtostrf( (fma45Roc / SCAL_FACT +   0 )        ,5, 1, &artiResp[51] );     // CSV-10 fma45Roc
@@ -1174,12 +1191,11 @@ void lcdsLoop() {
 //
 // Wrap writes to OFFN_PIN with TWIO Out 
 void offnDrve ( byte tPin, byte tVal) {
-#if WITH_OFFN   
 #if WITH_PCF8574
   twioWritePin( OFFN_TWPO, ((tVal > 0) ? 1:0));
-#else  
-  digitalWrite( OFFN_OPIN, ((tVal > 0) ? 1:0));
 #endif
+#if WITH_OFFN   
+  digitalWrite( OFFN_OPIN, ((tVal > 0) ? 1:0));
 #endif
 }
 
@@ -1217,7 +1233,7 @@ void millLoop() {
       if (offnOutp == 0) {
         offnOutp = 1;
         offnRctl |=  RCTL_ATTN;  // for virt tcpl
-        //digitalWrite( ONBD_OPIN, (1 & ~ONBD_LOWON));
+        //  offnDrve will do: digitalWrite( ONBD_OPIN, (1 & ~ONBD_LOWON));
         if ( offnRctl & RCTL_AUTO) {
           offnDrve ( OFFN_OPIN,   1);
         }
@@ -1227,7 +1243,7 @@ void millLoop() {
       //Output Off: use Outp as trig to avoid repeated i/o traffic, set off: offn space time 
         offnOutp = 0;
         offnRctl &= ~RCTL_ATTN;  // for virt tcpl
-        //digitalWrite( ONBD_OPIN, (0 | ONBD_LOWON));
+        //  offnDrve will do: digitalWrite( ONBD_OPIN, (0 | ONBD_LOWON));
         if ( offnRctl & RCTL_AUTO) {
           offnDrve ( OFFN_OPIN,   0);
         }
@@ -1235,7 +1251,8 @@ void millLoop() {
     }
     // flicker tell tale LED in case of fast PWM
     if ( (offnRctl & RCTL_AUTO) && (millStep & 64)) {
-      //digitalWrite( ONBD_OPIN, (0 | ONBD_LOWON));
+      //
+      digitalWrite( ONBD_OPIN, (0 | ONBD_LOWON));
     }
     // ESP's A/D converter is <= mill rate: controlled by ACDC_POLL_MILL  
 #if (PROC_ESP && !PROC_NMCU)
@@ -1357,7 +1374,7 @@ void millLoop() {
       // beanRlHt = float( histFRoc / pwmdFRoc);
       // Below: MAv TmpC / MAv PWM 
       // 
-      beanRlHt = ( 100 * pwmdFma0 / histMav0);        // Scale Magnified by arb amount
+      beanRlHt = ( pwmdFma0 / histMav0);        // Scale Magnified by arb amount
       //SePln(beanRlHt);  
 #endif      
       // Key Event detection 
@@ -1383,6 +1400,9 @@ void millLoop() {
           //Serial.println(F("# TURNPT Seen"));
         }
       }    
+      if ( histFma0 > BOILTMPC * SCAL_FACT) { phseChar = dryeChar; gateTmpC = DRYETMPC;}
+      if ( histFma0 > DRYETMPC * SCAL_FACT) { phseChar = fc1sChar; gateTmpC = FC1STMPC;}
+      if ( histFma0 > FC1STMPC * SCAL_FACT) { phseChar = finiChar; gateTmpC = FINITMPC;}
     }  // Enp per second moving average
   }  //  End Mill Step 
 }  
@@ -1415,57 +1435,6 @@ void millLoop() {
 //         Tf = alpha * Td , where alpha usually is set to 0.1
 ///
 
-// For PID debug change below to #if 1 and un-comment in fillBbrdl()
-#if 0
-void pidcDbug() {
-  //
-  dbugLine[6]   = 'r';
-  dtostrf( (pidcRn  ), 6, 2, &dbugLine[7] );
-  dbugLine[13]  = ' ';
-  //
-  dbugLine[14]  = 'y';
-  dtostrf( (pidcYn  ), 6, 2, &dbugLine[15] );
-  dbugLine[21]  = ' ';
-  //
-  dbugLine[22]  = 'e';
-  dtostrf( (pidcEn  ), 6, 2, &dbugLine[23] );
-  dbugLine[29]  = ' ';
-  //
-  dbugLine[30]  = 'o';
-  dtostrf( (pidcUn  ), 6, 2, &dbugLine[31] );
-  dbugLine[37]  = ' ';
-  //
-  dbugLine[38]  = 'K';
-  dtostrf( (pidcKp  ), 6, 2, &dbugLine[39] );
-  dbugLine[45]  = ' ';
-  //
-  dbugLine[46]  = 'S';
-  dtostrf( (pidcTi  ), 6, 2, &dbugLine[47] );
-  dbugLine[53]  = ' ';
-  //
-  dbugLine[54]  = 'V';
-  dtostrf( (pidcTd  ), 6, 2, &dbugLine[55] );
-  dbugLine[61]  = ' ';
-  //
-  dbugLine[62]  = 'P';
-  dtostrf( (pidcPc  ), 6, 2, &dbugLine[63] );
-  dbugLine[69]  = ' ';
-  //
-  dbugLine[70]  = 'I';
-  dtostrf( (pidcIc  ), 6, 2, &dbugLine[71] );
-  dbugLine[77]  = ' ';
-  //
-  dbugLine[78]  = 'D';
-  dtostrf( (pidcDc  ), 6, 2, &dbugLine[79] );
-  dbugLine[85]  = ' ';
-  //
-  for ( tempIntA = 0; tempIntA < 64; tempIntA++ ) {
-    if (( bbrdRctl & RCTL_ARTI ) == 0) {
-      Serial.write(dbugLine[tempIntA]);
-    }
-  } 
-}
-#endif
 
 int anewFprm( int eadx, float *targ, char *titl) {
   float fromEprm;
@@ -1703,8 +1672,8 @@ void pidcSync() {
 //      
 void profInit() {
   // simulation
-  prevSetp = *pidcSens = holdTmpC = int(AMBI_TMPC);
-  stepSecs = totlSecs = 0;
+  *pidcSens = holdTmpC = int(AMBI_TMPC);
+  stepSecs  = totlSecs = 0;
   profMark =  millis() + PROF_POLL_MSEC;
 }
 
@@ -2164,6 +2133,8 @@ void tcplLoop() {
 #if ( PROC_ESP && WITH_MAX31855 ) 
       // read() gets both status and temp 
       tResp    = tcpl.read();
+      //TMI 
+#if 0 
       if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
         // tcpl diags 
         Serial.print(F("# tcpl Stat:"));  Serial.print(tcpl.getStatus());
@@ -2172,6 +2143,7 @@ void tcplLoop() {
         Serial.print(F(" ITmp:"));        Serial.print(tcpl.getInternal());
         Serial.print(F(" TdegC:"));       Serial.println(tcpl.getTemperature());
       }
+#endif
       // getTemperature returns internal variable from read()
       tcplTmpC = tcpl.getTemperature();
 #endif
@@ -2241,7 +2213,7 @@ void tcplLoop() {
         lcd.clear();
 #endif
         // Bad reading: use avges 
-        sns1TmpC = float( prevSetp / 2.00 + dataSet1[0] / 4.00 + dataSet1[1] / 4.00 ); 
+        sns1TmpC = float( setpTmpC / 2.00 + dataSet1[0] / 4.00 + dataSet1[1] / 4.00 ); 
       }  // End tResp != 0 extended status 
       else {
         // Valid reading: update sensed temp
@@ -2278,6 +2250,8 @@ void tcp2Loop() {
 #if ( PROC_ESP && WITH_MAX31855 ) 
       // read() gets both status and temp 
       tResp    = tcp2.read();
+      //TMI 
+#if 0 
       if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
         // tcpl diags 
         Serial.print(F("# tcp2 Stat:"));  Serial.print(tcpl.getStatus());
@@ -2286,13 +2260,14 @@ void tcp2Loop() {
         Serial.print(F(" ITmp:"));        Serial.print(tcpl.getInternal());
         Serial.print(F(" TdegC:"));       Serial.println(tcpl.getTemperature());
       }
+#endif
       // getTemperature returns internal variable from read()
       tcp2TmpC = tcp2.getTemperature();
 #endif
       // Error  condition ESP:tResp <> 0   (UNO | MAX6675): isNan Temperature  
       if (isnan(tcp2TmpC)) {
         // Bad reading: don't update sensor temperature 
-        //sns2TmpC = float( prevSetp / 2.00 + dataSet1[0] / 4.00 + dataSet1[1] / 4.00 ); 
+        //sns2TmpC = float( setpTmpC / 2.00 + dataSet1[0] / 4.00 + dataSet1[1] / 4.00 ); 
 #if (PROC_UNO && WITH_MAX31855)
         tResp = tcp2.readError();
 #endif       
@@ -2354,8 +2329,8 @@ void tcp2Loop() {
         delay (500);
         lcd.clear();
 #endif
-        // Bad reading: use avges 
-        sns2TmpC = float( prevSetp / 2.00 + dataSet1[0] / 4.00 + dataSet1[1] / 4.00 ); 
+        // Bad reading: don't update  
+        //   sns2TmpC = float( setpTmpC / 2.00 + dataSet1[0] / 4.00 + dataSet1[1] / 4.00 ); 
       }  // End tResp != 0 extended status 
       else {
         // Valid reading: update sensed temp
@@ -2486,11 +2461,11 @@ void userLoop() {
         chanSens( 2, userCmdl.charAt(6));
         chanSens( 3, userCmdl.charAt(7));
         chanSens( 4, userCmdl.charAt(8));
-      }
         // Send ack response 
         if ( !( bbrdRctl & RCTL_ARTI ) ) {
           Serial.println(F("# CHAN"));
         }
+      }
       //  FILT;L1;L2;L3;L4 cmd: Assign digital filter lever Lx to Input n; Resp '#' ack
       if ((userCmdl[0] == 'F') && (userCmdl[1] == 'I') && (userCmdl[2] == 'L') && (userCmdl[3] == 'T')) {
         // Send ack response 
@@ -2518,16 +2493,18 @@ void userLoop() {
           } else if ((userCmdl[4] == 'D')) {
             userAOT1 = userAOT1 - DUTY_STEP;
           } else {
-              userAOT1 = (userCmdl.substring(4)).toInt();
+            userAOT1 = (userCmdl.substring(4)).toInt();
           }
           userAOT1 = (userAOT1 >  99) ?  100 : userAOT1;
           userAOT1 = (userAOT1 <   1) ?    0 : userAOT1;
           userDuty = userAOT1;
           pidcRctl &= ~RCTL_AUTO;
 #if WITH_PWMD          
-          pwmdRctl &= ~RCTL_MANU;
-          pwmdRctl |=  ( RCTL_AUTO | RCTL_ATTN );
+          pwmdRctl &= ~RCTL_AUTO;
+          pwmdRctl |=  ( RCTL_MANU | RCTL_ATTN );
 #endif          
+          // manual pwm will apply in pwmd loop; unset manual ramp ctrl 
+          rampCdpm = userDgpm = 0;
           // Send ack response
           if ( !( bbrdRctl & RCTL_ARTI ) ) {
             Serial.println(F("1"));
@@ -2551,12 +2528,13 @@ void userLoop() {
       }
       //  PIDxxxx cmds
       if ((userCmdl[0] == 'P') && (userCmdl[1] == 'I') && (userCmdl[2] == 'D')) { 
+          // Start ack response 
         if ( !( bbrdRctl & RCTL_ARTI ) ) {
           Serial.print(F("# PID "));
         }
         // PID;CHG;GRMS cmd: PID <= New Cycle Time mSec
         if ((userCmdl[4] == 'C') && (userCmdl[5] == 'H') && (userCmdl[6] == 'G')) {
-          // Start ack response 
+          // cont ack response 
           if ( !( bbrdRctl & RCTL_ARTI ) ) {
             Serial.print(F("CHG: "));
           }
@@ -2572,7 +2550,7 @@ void userLoop() {
         }  
         // PID;CT;mSec cmd: PID <= New Cycle Time mSec
         if ((userCmdl[4] == 'C') && (userCmdl[5] == 'T')) {
-          // Start ack response 
+          //   cont ack response 
           if ( !( bbrdRctl & RCTL_ARTI ) ) {
             Serial.print(F("CT: "));
           }
@@ -2580,7 +2558,7 @@ void userLoop() {
           if (!isnan(tempFltA)) {
             pidcPoll = tempFltA;
             if ( !( bbrdRctl & RCTL_ARTI ) ) {
-              Serial.print(F("PID mSec poll: ")); Serial.print(pidcPoll);
+              Serial.print(F("mSec poll: ")); Serial.print(pidcPoll);
             }
           }
           if ( !( bbrdRctl & RCTL_ARTI ) ) {
@@ -2605,19 +2583,16 @@ void userLoop() {
         }
         // PID;PV;s    cmd: PID <= Select Process Variable ( Input) to Sensor Nbr 's' 
         if ((userCmdl[4] == 'P') && (userCmdl[5] == 'V')) {
-          // Start ack response 
+          //   cont ack response 
           if ( !( bbrdRctl & RCTL_ARTI ) ) {
-            Serial.print(F("PID PV Inp Sensor: "));
+            Serial.print(F("PV Inp Snsr: "));
           }
           tempIntA = (userCmdl.substring(7,8)).toInt();
           if (( tempIntA > 0 ) && (tempIntA <5 )) {
             pidcSens = sensAddx( tempIntA);
             if ( !( bbrdRctl & RCTL_ARTI ) ) {
-              Serial.print( tempIntA);
+              Serial.println( tempIntA);
             }
-          }
-          if ( !( bbrdRctl & RCTL_ARTI ) ) {
-            Serial.println(F("PV"));
           }
         }
         // PID;RESET
@@ -2733,314 +2708,312 @@ void userLoop() {
         }
       }
     }
-    // Artisan mode or Normal Mode cmds 
-    //  a/A Toggle Artisan format serial interface
-    if ((userCmdl[0] == 'A') || (userCmdl[0] == 'a')) {
-      // Toggle Artisan Interface
-      if ( bbrdRctl & RCTL_ARTI ) {
-        bbrdRctl &= ~RCTL_ARTI; 
-        Serial.println(F("# Serial  <=> Console"));
-      } else {
-        bbrdRctl |=  RCTL_ARTI;
-        Serial.println(F("# Serial  <=> Artisan"));
-      }
-    }
-    // B  put pidc Beta term 
-    if (userCmdl[0] == 'B') {
-      pidcBeta = (userCmdl.substring(1)).toFloat();
-      pidcInfo();
-    }
-    // Artisan CHAN cmd For reset flip to Artisan mode   
-    if ((userCmdl[0] == 'C') && (userCmdl[1] == 'H') && (userCmdl[2] == 'A') && (userCmdl[3] == 'N')) {
-      bbrdRctl |=  RCTL_ARTI;
-      //  'chan' cmd, respond '#'    
-      Serial.println(F("#"));
-    }
-    //  c/C set Centigrade units 
-    if (((userCmdl[0] == 'C') || (userCmdl[0] == 'c')) && (userCmdl[1] != 'H')) {
-      userScal = celsChar;
-    }
-    // d/D Toggle Diagnostic Flag
-    if ((userCmdl[0] == 'D') || (userCmdl[0] == 'd')) {
-      if ( bbrdRctl & RCTL_DIAG ) {
-        Serial.println(F("# Diagnostics Mode  is InActive"));
-        bbrdRctl &= ~RCTL_DIAG; 
-      } else {
-        bbrdRctl |=  RCTL_DIAG; 
-        Serial.println(F("# Diagnostics Mode  is   Active"));
-      }
-    }
-    // e Readback EEPROM values 
-    if (userCmdl[0] == 'e') {
-      eprmInfo();
-    }
-    // E Write EEPROM values from PID current parameters 
-    if (userCmdl[0] == 'E') {
-      EEPROM.get(EADX_KP, fromEprm);
-      if ( pidcKp    != fromEprm ) {
-        EEPROM.put( EADX_KP, pidcKp);
-      }
-      EEPROM.get(EADX_TI, fromEprm);
-      if ( pidcTi    != fromEprm ) {
-        EEPROM.put( EADX_TI, pidcTi);
-      }
-      EEPROM.get(EADX_TD, fromEprm);
-      if ( pidcTd    != fromEprm ) {
-        EEPROM.put( EADX_TD, pidcTd);
-      }
-      EEPROM.get(EADX_CT, fromEprm);
-      if ( pidcPoll    != int(fromEprm)) {
-        EEPROM.put( EADX_CT, float(pidcPoll));
-      }
-      EEPROM.get(EADX_BE, fromEprm);
-      if ( pidcBeta  != fromEprm ) {
-        EEPROM.put( EADX_BE, pidcBeta);
-      }
-      EEPROM.get(EADX_GA, fromEprm);
-      if ( pidcGamma != fromEprm ) {
-        EEPROM.put( EADX_GA, pidcGamma);
-      }
-      EEPROM.get(EADX_KA, fromEprm);
-      if ( pidcKappa != fromEprm ) {
-        EEPROM.put( EADX_KA, pidcKappa);
-      }
-  #if PROC_ESP
-      EEPROM.commit();
-  #endif    
-      eprmInfo();  
-    }
-    // f/F Set fahrenheit units 
-    if (((userCmdl[0] == 'F') || (userCmdl[0] == 'f')) && (userCmdl[1] != 'I')) {
-      userScal = fahrChar;
-    }
-    // G  put pid Gamma term 
-    if (userCmdl[0] == 'G') {
-      pidcGamma = (userCmdl.substring(1)).toFloat();
-      pidcInfo();
-    }
-    if ((userCmdl[0] == 'H') || (userCmdl[0] == 'h')) {
-      // set desired hold temperatre deg
-      userDegs = (userCmdl.substring(1)).toInt();
-      if ( userScal == fahrChar) {
-        holdTmpC = intgFtoC( userDegs); 
-      } else {
-        holdTmpC = userDegs;
-      }
-      if (holdTmpC > MAXI_TMPC) holdTmpC = MAXI_TMPC;
-      pwmdRctl &= ~RCTL_MANU;
-      pwmdRctl |=  RCTL_AUTO;
-    }
-    // I  put pid Ti term 
-    if (userCmdl[0] == 'I') {
-      pidcTi = (userCmdl.substring(1)).toFloat();
-      pidcInfo();
-    }
-    // J put pid Td term 
-    if (userCmdl[0] == 'J') {
-      pidcTd = (userCmdl.substring(1)).toFloat();
-      pidcInfo();
-    }
-    // K put pid Kappa term 
-    if (userCmdl[0] == 'K') {
-      pidcKappa = (userCmdl.substring(1)).toFloat();
-      pidcInfo();
-    }
-    if ((userCmdl[0] == 'L') || (userCmdl[0] == 'l')) {
-      // Toggle logging, preface with banner lines when logging started 
-      if ( bbrdRctl & RCTL_INFO ) {
-        // Artisan csv Logging: send two header lines with tab chars
-        // prefix with version 
-        Serial.println(versChrs);
-        eprmInfo();
-        pidcInfo();
-        Serial.println(csvlHdr1); 
-        Serial.println(csvlHdr2); 
-        // Switch On  Artisan csv Logging. TotalTime, StepTime must start at 0. 
-        bbrdRctl &= ~RCTL_INFO; 
-        stepSecs = totlSecs = 0;
-      } else {
-        bbrdRctl |= RCTL_INFO; 
-      }
-    }
-    if (userCmdl[0] == 'M') {
-      // temp hold new bean mass to compare with old  
-      tempIntB = (userCmdl.substring(1)).toInt();
-      // Gets unstable with v low masses 
-      if (tempIntB < 10 ) tempIntB = 10;
-      // Beans added at ambient, reduce wkng temp towards ambient
-      if (tempIntB > vChgGrms) {
-        vTmpDegC = float(IDLE_TMPC) + (vChgGrms / ( vChgGrms + tempIntB )) * ( vTmpDegC - float(IDLE_TMPC));
-      }
-      vChgGrms = tempIntB;
-#if 0
-        Serial.print(F("# New vChgGrms: "));
-        Serial.print(vChgGrms);
-        Serial.print(F("  vTmpDegC: "));
-        Serial.println(vTmpDegC);
-#endif
-    }
-    // m cmd TBD stored profile from memory 
-    if (userCmdl[0] == 'm'){
-      profNmbr = (userCmdl.substring(1)).toInt();
-      if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-      }
-      stepSecs = 0;
-    }
-    // N  PID oN 
-    if ((userCmdl[0] == 'N') && (userCmdl[1] != 'T')) {
-      pidcRctl ^= RCTL_RUNS;
-      pidcStrt();
-    }
-    // O  PID Off 
-    if ((userCmdl[0] == 'O') ) {
-      pidcRctl &= ~RCTL_RUNS;
-      pidcStop();
-    }
-    // P  put pid Kp term 
-    if (((userCmdl[0] == 'p') || (userCmdl[0] == 'P')) && \
-         (userCmdl[1] != 'I') && (userCmdl[1] != 'i') && (userCmdl[1] != 'O') && (userCmdl[1] != 'o')) {
-      pidcKp = (userCmdl.substring(1)).toFloat();
-      pidcInfo();
-    }
-    // q query readback PID operating parameters
-    if (userCmdl[0] == 'q') {
-      pidcInfo();
-    }
-    // R/r Set RoC 
-    if (((userCmdl[0] == 'R') || (userCmdl[0] == 'r')) && (userCmdl[1] != 'E')) {
-      // Keep user entry for billboard; convert, set profile temp ramp rate degC/min
-      userDgpm = (userCmdl.substring(1)).toInt();
-      if ( userScal == fahrChar) {
-        rampCdpm = int ( float(userDgpm) * 5.00 / 9.00);
-      } else {
-        rampCdpm = userDgpm;
-      }
-      if (!isnan(*pidcSens)) {   
-        baseTmpC = int(*pidcSens);
-      }
-      if (userDgpm > 0) holdTmpC = MAXI_TMPC - 20;
-      if (userDgpm < 0) holdTmpC = AMBI_TMPC;
-      if (userDgpm == 0) {
-        // Selected ROC 0: Hold current temp 
-        bbrdMode = holdChar;
-        if (!isnan(*pidcSens)) {   
-          setpTmpC = int(*pidcSens);
+    // non-Artisan 'norm' speak cmds 
+    // if (!( bbrdRctl & RCTL_ARTI )) {
+    // inspect in either mode
+    if (1){
+      //  a/A Toggle Artisan format serial interface
+      if ((userCmdl[0] == 'A') || (userCmdl[0] == 'a')) {
+        // Toggle Artisan Interface
+        if ( bbrdRctl & RCTL_ARTI ) {
+          bbrdRctl &= ~RCTL_ARTI; 
+          Serial.println(F("# Serial  <=> Console"));
+        } else {
+          bbrdRctl |=  RCTL_ARTI;
+          Serial.println(F("# Serial  <=> Artisan"));
         }
-      } else {
-        // On R0 don't reset step timer 
+      }
+      // Artisan CHAN cmd For reset flip to Artisan mode   
+      if ((userCmdl[0] == 'C') && (userCmdl[1] == 'H') && (userCmdl[2] == 'A') && (userCmdl[3] == 'N')) {
+        bbrdRctl |=  RCTL_ARTI;
+        //  'chan' cmd, respond '#'    
+        Serial.println(F("#"));
+      }
+      //  c/C set Centigrade units 
+      if (((userCmdl[0] == 'C') || (userCmdl[0] == 'c')) && (userCmdl[1] != 'H')) {
+        userScal = celsChar;
+      }
+      // d/D Toggle Diagnostic Flag
+      if ((userCmdl[0] == 'D') || (userCmdl[0] == 'd')) {
+        if ( bbrdRctl & RCTL_DIAG ) {
+          Serial.println(F("# Diagnostics Mode  is InActive"));
+          bbrdRctl &= ~RCTL_DIAG; 
+        } else {
+          bbrdRctl |=  RCTL_DIAG; 
+          Serial.println(F("# Diagnostics Mode  is   Active"));
+        }
+      }
+      // e Readback EEPROM values 
+      if (userCmdl[0] == 'e') {
+        eprmInfo();
+      }
+      // E Write EEPROM values from PID current parameters 
+      if (userCmdl[0] == 'E') {
+        EEPROM.get(EADX_KP, fromEprm);
+        if ( pidcKp    != fromEprm ) {
+          EEPROM.put( EADX_KP, pidcKp);
+        }
+        EEPROM.get(EADX_TI, fromEprm);
+        if ( pidcTi    != fromEprm ) {
+          EEPROM.put( EADX_TI, pidcTi);
+        }
+        EEPROM.get(EADX_TD, fromEprm);
+        if ( pidcTd    != fromEprm ) {
+          EEPROM.put( EADX_TD, pidcTd);
+        }
+        EEPROM.get(EADX_CT, fromEprm);
+        if ( pidcPoll    != int(fromEprm)) {
+          EEPROM.put( EADX_CT, float(pidcPoll));
+        }
+        EEPROM.get(EADX_BE, fromEprm);
+        if ( pidcBeta  != fromEprm ) {
+          EEPROM.put( EADX_BE, pidcBeta);
+        }
+        EEPROM.get(EADX_GA, fromEprm);
+        if ( pidcGamma != fromEprm ) {
+          EEPROM.put( EADX_GA, pidcGamma);
+        }
+        EEPROM.get(EADX_KA, fromEprm);
+        if ( pidcKappa != fromEprm ) {
+          EEPROM.put( EADX_KA, pidcKappa);
+        }
+    #if PROC_ESP
+        EEPROM.commit();
+    #endif    
+        eprmInfo();  
+      }
+      // f/F Set fahrenheit units 
+      if (((userCmdl[0] == 'F') || (userCmdl[0] == 'f')) && (userCmdl[1] != 'I')) {
+        userScal = fahrChar;
+      }
+      // g set gateTmpC
+      if (userCmdl[0] == 'g') {
+        userDegs = (userCmdl.substring(1)).toInt();
+        if ( userScal == fahrChar) {
+          userDegs = intgFtoC( userDegs); 
+        }
+        gateTmpC = userDegs;
+        if (gateTmpC > MAXI_TMPC) gateTmpC = MAXI_TMPC;
+      }
+      if ((userCmdl[0] == 'H') || (userCmdl[0] == 'h')) {
+        // set desired hold temperatre deg
+        userDegs = (userCmdl.substring(1)).toInt();
+        if ( userScal == fahrChar) {
+          holdTmpC = intgFtoC( userDegs); 
+        } else {
+          holdTmpC = userDegs;
+        }
+        if (holdTmpC > MAXI_TMPC) holdTmpC = MAXI_TMPC;
+        pwmdRctl &= ~RCTL_MANU;
+        pwmdRctl |=  RCTL_AUTO;
+      }
+      // I  put pid Ti term 
+      if (userCmdl[0] == 'I') {
+        pidcTi = (userCmdl.substring(1)).toFloat();
+        pidcInfo();
+      }
+      // J put pid Td term 
+      if (userCmdl[0] == 'J') {
+        pidcTd = (userCmdl.substring(1)).toFloat();
+        pidcInfo();
+      }
+      if ((userCmdl[0] == 'L') || (userCmdl[0] == 'l')) {
+        // Toggle logging, preface with banner lines when logging started 
+        if ( bbrdRctl & RCTL_INFO ) {
+          // Artisan csv Logging: send two header lines with tab chars
+          // prefix with version 
+          Serial.println(versChrs);
+          eprmInfo();
+          pidcInfo();
+          Serial.println(csvlHdr1); 
+          Serial.println(csvlHdr2); 
+          // Switch On  Artisan csv Logging. TotalTime, StepTime must start at 0. 
+          bbrdRctl &= ~RCTL_INFO; 
+          stepSecs = totlSecs = 0;
+        } else {
+          bbrdRctl |= RCTL_INFO; 
+        }
+      }
+      if (userCmdl[0] == 'M') {
+        // temp hold new bean mass to compare with old  
+        tempIntB = (userCmdl.substring(1)).toInt();
+        // Gets unstable with v low masses 
+        if (tempIntB < 10 ) tempIntB = 10;
+        // Beans added at ambient, reduce wkng temp towards ambient
+        if (tempIntB > vChgGrms) {
+          vTmpDegC = float(IDLE_TMPC) + (vChgGrms / ( vChgGrms + tempIntB )) * ( vTmpDegC - float(IDLE_TMPC));
+        }
+        vChgGrms = tempIntB;
+  #if 0
+          Serial.print(F("# New vChgGrms: "));
+          Serial.print(vChgGrms);
+          Serial.print(F("  vTmpDegC: "));
+          Serial.println(vTmpDegC);
+  #endif
+      }
+      // m cmd TBD stored profile from memory 
+      if (userCmdl[0] == 'm'){
+        profNmbr = (userCmdl.substring(1)).toInt();
+        if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+        }
         stepSecs = 0;
       }
-      // seting ramp unsets manual PWM width 
-      pidcRctl |=  ( RCTL_AUTO | RCTL_RUNS);
-      pwmdRctl &= ~RCTL_MANU;
-      pwmdRctl |=  RCTL_AUTO;
-      // Send ack response 
-      if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-        Serial.print(F("#r:")); Serial.println(userDgpm);
+      // N  PID oN 
+      if ((userCmdl[0] == 'N') && (userCmdl[1] != 'T')) {
+        pidcRctl ^= RCTL_RUNS;
+        pidcStrt();
       }
-    }
-    if ((userCmdl[0] == 'S') || (userCmdl[0] == 's')) {
-      // set desired setpoint / immed target temperatre deg
-      userDegs = (userCmdl.substring(1)).toInt();
-      if ( userScal == fahrChar) {
-        setpTmpC = intgFtoC( userDegs); 
-      } else {
-        setpTmpC = userDegs;
+      // O  PID Off 
+      if ((userCmdl[0] == 'O') ) {
+        pidcRctl &= ~RCTL_RUNS;
+        pidcStop();
       }
-      if (setpTmpC > MAXI_TMPC) setpTmpC = MAXI_TMPC;
-      holdTmpC = setpTmpC;
-      rampCdpm = userDgpm = 0;          // Setting target temp implies no ramp 
-      stepSecs = 0;                     // User command: reset step timer 
-      pidcRctl |=  RCTL_RUNS;
-      pidcRctl |=  RCTL_AUTO;
-      pwmdRctl &= ~RCTL_MANU;
-      pwmdRctl |=  RCTL_AUTO;
-      bbrdMode  = setpChar;
-    }
-    if ((userCmdl[0] == 'U')                        ) {
-      // set new PWM frequency 
-      pwmdFreq = (userCmdl.substring(1)).toInt();
-      pwmdSetF( pwmdFreq);
-    }
-    if ((userCmdl[0] == 'U') || (userCmdl[0] == 'u')) {
-      if  (!( bbrdRctl & RCTL_ARTI )) {
-        Serial.print(F("# pwmdFreq: ")); Serial.println(pwmdFreq);
-      }
-    }
-    if (userCmdl[0] == 'V') {
-      // New PID Values from Eprom => PID 
-      pidcFprm();
-    }
-    if (userCmdl[0] == 'v') {
-      // Version string e if Artisan is setting Unit C/F 
-      if  (!( bbrdRctl & RCTL_ARTI )) {
-        Serial.println(versChrs);
-        eprmInfo();
+      // P  put pid Kp term 
+      if (((userCmdl[0] == 'p') || (userCmdl[0] == 'P')) && \
+           (userCmdl[1] != 'I') && (userCmdl[1] != 'i') && (userCmdl[1] != 'O') && (userCmdl[1] != 'o')) {
+        pidcKp = (userCmdl.substring(1)).toFloat();
         pidcInfo();
       }
-    }
-    if ((userCmdl[0] == 'W') || (userCmdl[0] == 'w')) {
-      // set new pwmD Width, run control flag to indicate manual override
-      userDuty = (userCmdl.substring(1)).toInt();
-      if (userDuty > 99) userDuty = 100;
-      if ( !( bbrdRctl & RCTL_ARTI ) && (bbrdRctl & RCTL_DIAG) ) {  
-        Serial.print(F("# Manu PWM%: "));
-        Serial.println(userDuty);
+      // R/r Set RoC 
+      if (((userCmdl[0] == 'R') || (userCmdl[0] == 'r')) && (userCmdl[1] != 'E')) {
+        // Keep user entry for billboard; convert, set profile temp ramp rate degC/min
+        userDgpm = (userCmdl.substring(1)).toInt();
+        if ( userScal == fahrChar) {
+          rampCdpm = int ( float(userDgpm) * 5.00 / 9.00);
+        } else {
+          rampCdpm = userDgpm;
+        }
+        if (!isnan(*pidcSens)) {   
+          baseTmpC = int(*pidcSens);
+        }
+        // R cmd here must force hold temp, use H command later 
+        if (userDgpm > 0) holdTmpC = MAXI_TMPC - 20;
+        if (userDgpm < 0) holdTmpC = AMBI_TMPC;
+        if (userDgpm == 0) {
+          // Selected ROC 0: Hold current temp 
+          bbrdMode = holdChar;
+          if (!isnan(*pidcSens)) {   
+            setpTmpC = int(*pidcSens);
+          }
+        } else {
+          // On R0 don't reset step timer 
+          stepSecs = 0;
+        }
+        // seting ramp unsets manual PWM width 
+        pidcRctl |=  ( RCTL_AUTO | RCTL_RUNS);
+        pwmdRctl &= ~RCTL_MANU;
+        pwmdRctl |=  RCTL_AUTO;
+        // Send ack response 
+        if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+          Serial.print(F("#r:")); Serial.println(userDgpm);
+        }
       }
-      //    Serial.print("# New PWM: ");
-      //    Serial.println(userDuty);
-      if ( userDuty == 0) {
-        // Power off: Sense ambient ( fan htr pwr), temp setpt to meas ambient
-        setpTmpC = AMBI_TMPC;
-        pidcStop();
-      } else {
-        stepSecs = 0;                   // User command: reset step timer 
+      if ((userCmdl[0] == 'S') || (userCmdl[0] == 's')) {
+        // set desired setpoint / immed target temperatre deg
+        userDegs = (userCmdl.substring(1)).toInt();
+        if ( userScal == fahrChar) {
+          setpTmpC = intgFtoC( userDegs); 
+        } else {
+          setpTmpC = userDegs;
+        }
+        if (setpTmpC > MAXI_TMPC) setpTmpC = MAXI_TMPC;
+        holdTmpC = setpTmpC;
+        rampCdpm = userDgpm = 0;          // Setting target temp implies no ramp 
+        stepSecs = 0;                     // User command: reset step timer 
+        pidcRctl |=  RCTL_RUNS;
+        pidcRctl |=  RCTL_AUTO;
+        pwmdRctl &= ~RCTL_MANU;
+        pwmdRctl |=  RCTL_AUTO;
+        bbrdMode  = setpChar;
       }
-      userDgpm = 0;
-      bbrdMode = manuChar;
-      pidcRctl &= ~RCTL_AUTO;
-      pwmdRctl &= ~RCTL_AUTO;
-      pwmdRctl |=  ( RCTL_MANU | RCTL_ATTN );
-      // manual pwm will apply in pwmd loop; unset manual ramp ctrl 
-      rampCdpm = 0;
-      // Send ack response 
-      if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-        Serial.println(F("#w"));
+#if !PROC_UNO
+      if (userCmdl[0] == 'U')  {
+        // set new PWM frequency 
+        pwmdFreq = (userCmdl.substring(1)).toInt();
+        pwmdSetF( pwmdFreq);
       }
-    }
-    // y re-sync PID to current conditions  
-    if ((userCmdl[0] == 'y')) {
-      // Live sync PID to present condition
-      pidcSync(); 
-      histFma0 = histFma1 = histFma2 = 0;
-      chgeSeen = tpntSeen = 0; 
-      chgeArmd = tpntArmd = 1; 
-    }
-    // Y  re-start ESP 
-#if PROC_ESP  
-    // Y Restart ESP  
-    if ((userCmdl[0] == 'Y') ) {
-      Serial.print("# ESP restart in 3: ");
-      delay(3000);
-      ESP.restart(); 
-    }
-#endif   
-    //z  reset Time counts  
-    if ((userCmdl[0] == 'Z')) {
-      // Zero 'Total Time' 
-      totlSecs = 0;
-      stepSecs = 0;
-    }
-    // Z Reset PID and timer counts
-    if ((userCmdl[0] == 'z')) {
-      pidcRset();
-    }
-    if ((userCmdl[0] == '?')) {
-      // For debug to see if Artisan is setting Unit C/F 
-      if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
-        Serial.println(userScal);
+      if (userCmdl[0] == 'u') {
+        if  (!( bbrdRctl & RCTL_ARTI )) {
+          Serial.print(F("# pwmdFreq: ")); Serial.println(pwmdFreq);
+        }
       }
-    }
+#endif      
+      if (userCmdl[0] == 'V') {
+        // New PID Values from Eprom => PID 
+        pidcFprm();
+      }
+      if (userCmdl[0] == 'v') {
+        // Version string e if Artisan is setting Unit C/F 
+        if  (!( bbrdRctl & RCTL_ARTI )) {
+          Serial.println(versChrs);
+          eprmInfo();
+          pidcInfo();
+        }
+      }
+      if ((userCmdl[0] == 'W') || (userCmdl[0] == 'w')) {
+        // set new pwmD Width, run control flag to indicate manual override
+        userDuty = (userCmdl.substring(1)).toInt();
+        if (userDuty > 99) userDuty = 100;
+        if ( !( bbrdRctl & RCTL_ARTI ) && (bbrdRctl & RCTL_DIAG) ) {  
+          Serial.print(F("# Manu PWM%: "));
+          Serial.println(userDuty);
+        }
+        //    Serial.print("# New PWM: ");
+        //    Serial.println(userDuty);
+        if ( userDuty == 0) {
+          // Power off: Sense ambient ( fan htr pwr), temp setpt to meas ambient
+          setpTmpC = AMBI_TMPC;
+          pidcStop();
+        } else {
+          stepSecs = 0;                   // User command: reset step timer 
+        }
+        bbrdMode = manuChar;
+        pidcRctl &= ~RCTL_AUTO;
+        pwmdRctl &= ~RCTL_AUTO;
+        pwmdRctl |=  ( RCTL_MANU | RCTL_ATTN );
+        // manual pwm will apply in pwmd loop; unset manual ramp ctrl 
+        rampCdpm = userDgpm = 0;
+        // Send ack response 
+        if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+          Serial.println(F("#w"));
+        }
+      }
+      // y re-sync PID to current conditions  
+      if ((userCmdl[0] == 'y')) {
+        // Live sync PID to present condition
+        pidcSync(); 
+        histFma0 = histFma1 = histFma2 = 0;
+        chgeSeen = tpntSeen = 0; 
+        chgeArmd = tpntArmd = 1; 
+      }
+      // Y  re-start ESP 
+  #if PROC_ESP  
+      // Y Restart ESP  
+      if ((userCmdl[0] == 'Y') ) {
+        Serial.print("# ESP restart in 3: ");
+        delay(3000);
+        ESP.restart(); 
+      }
+  #endif   
+      //z  reset Time counts  
+      if ((userCmdl[0] == 'z')) {
+        // Zero 'Total Time' 
+        totlSecs = 0;
+        stepSecs = 0;
+        phseChar = chgdChar;
+      }
+      // Z Reset PID
+      if ((userCmdl[0] == 'Z')) {
+        pidcRset();
+      }
+      if ((userCmdl[0] == '?')) {
+        // For debug to see if Artisan is setting Unit C/F 
+        if ( !( bbrdRctl & RCTL_ARTI ) && ( bbrdRctl & RCTL_DIAG) ) {
+          Serial.println(userScal);
+        }
+      }
+      // end norm nonArti speak
+    }  
     //  clean out cmdLine 
     //for ( tempIntA = 0; tempIntA < (userCmdl.length()); tempIntA++ ) {
     //  userCmdl[tempIntA] = ' ';
