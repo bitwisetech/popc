@@ -185,7 +185,7 @@
 // UNO pin assignments
 #if PROC_UNO
 // Off/On SSR driver 
-#define OFFN_OPIN  16
+#define OFFN_OPIN  13
 // Onboard Led indicates duty cycle
 #define ONBD_OPIN LED_BUILTIN
 #define ONBD_LOWON 0         
