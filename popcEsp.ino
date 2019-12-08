@@ -226,6 +226,7 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);
 Adafruit_MAX31855 tcpl(TCPL_CLCK, TCPL_CSEL, TCPL_MISO);
 #if WITH_TCPL_2
 Adafruit_MAX31855 tcp2(TCPL_CLCK, TCPL_CSL2, TCPL_MISO);                  // Second Tcpl shares clock, data
+#endif
 //
 
 /// Declarations by unit
@@ -313,7 +314,7 @@ int   pidcPc, pidcIc, pidcDc       = 0.0; // cumulative P-I-D components for dia
 #define PIDC_NVDT  0                      // Sets Inverted D-Term, not classical Incremental PID 
 ///
 //
-const char versChrs[] = "18Au14-priv-NMcu";
+const char versChrs[] = "18Au14-publ-UNO";
 /// wip: stored profiles
 // profiles
 //   stored as profiles 1-9 with steps 0-9 in each 
@@ -554,7 +555,6 @@ void  respArti() {
     dtostrf(            *chnBTmpC,             5, 1, &artiResp[12] );   // P2: ( dflt: BT )
     dtostrf(            *chnATmpC,             5, 1, &artiResp[18] );   // P3:
     dtostrf(            *chnBTmpC,             5, 1, &artiResp[24] );   // P4:
-#endif    
   // ESP pseems to pad with nulls
   //artResp[33] = artiResp[32] = artiResp[31] = artiResp[30] = ' ';
     dtostrf(               pwmdPcnt,           5, 1, &artiResp[30] );   // P5: (HTR) PWM % Duty Cycle
@@ -1835,7 +1835,6 @@ void tcplLoop() {
     }   // End tcplRctl != 0  
   }  //End tcpl poll time
 }  // End tcplLoop 
-#endif // (WITH_MAX31855 || WITH_MAX6675)
 
 #if WITH_TCPL_2
 // Thermocouple 2 
@@ -1930,7 +1929,6 @@ void tcp2Loop() {
     }   // End tcplRctl != 0  
   }  //End tcp2 poll time
 }  // End tcpl2oop 
-#endif // (WITH_MAX31855 || WITH_MAX6675)
 #endif
 
 ///
