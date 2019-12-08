@@ -113,9 +113,9 @@
 //
 //  Code compiler switches: 1/0 Enab/Dsel UNO-ESP proc HW, Wifi options - Rebuild, Upload after changing these 
 #define IFAC_ARTI     1                  // Start with Artisan interface on Serial
-#define WITH_LCD      1                  // Hdwre has I2C 2x16 LCD display of either type
+#define WITH_LCD      0                  // Hdwre has I2C 2x16 LCD display of either type
 #define WITH_VIRTTCPL 0                  // No hdwre, simulate virtual thermocouple output
-#define WITH_TCPL_2   1                  // Second Thermocouple MUST be same type ( libraies conflict ) 
+#define WITH_TCPL_2   0                  // Second Thermocouple MUST be same type ( libraies conflict ) 
 #define WITH_OFFN     1                  // Use 250mSec cycle via mill Off-On SSR
 #define WITH_PWMD     0                  // Use fast h/w PWM
 //
