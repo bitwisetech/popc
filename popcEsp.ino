@@ -314,7 +314,7 @@ int   pidcPc, pidcIc, pidcDc       = 0.0; // cumulative P-I-D components for dia
 #define PIDC_NVDT  0                      // Sets Inverted D-Term, not classical Incremental PID 
 ///
 //
-const char versChrs[] = "18Au14-publ-UNO";
+const char versChrs[] = "19Dc08-publ-UNO";
 /// wip: stored profiles
 // profiles
 //   stored as profiles 1-9 with steps 0-9 in each 
