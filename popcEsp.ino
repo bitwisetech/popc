@@ -1433,6 +1433,9 @@ void profLoop() {
 //
 void pwmdExpo( byte dtwoExpo) {
 // ESP Default Frequ is 1024. Writing new Freq seems to cause exception
+#if PROC_ESP
+#endif  // PROC_ESP
+#if PROC_UNO
   switch (dtwoExpo) {
     case   0:
       // Pscl:    1 Freq: 31372.55Hz
@@ -1455,6 +1458,7 @@ void pwmdExpo( byte dtwoExpo) {
       TCCR1B = TCCR1B & B11111000 | B00000011;
     break;
   }
+#endif  
 }  
 
 void pwmdSetF( double newFreq) {
